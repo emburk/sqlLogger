@@ -503,3 +503,23 @@ Update `ExampleApp/main.cpp` to use `autoRegisterTables()` and `autoWrite()` ins
 12. Add Visual Studio 2019 solution/project files.
 13. Add tests or manual validation utilities.
 14. Add automatic table registration and multi-table write helpers.
+
+## Phase 12: Static library example solution
+
+### PLAN-1201: Keep monolithic solution
+Leave the existing `DataLoggerSolution.sln` and `DataLogger.vcxproj` in place as the retained single-project build.
+
+### PLAN-1202: Add core static library project
+Create `DataLoggerCore/DataLoggerCore.vcxproj` as a Visual Studio 2019 static library project that owns only `DataLoggerCore` headers and sources.
+
+### PLAN-1203: Add backend static library project
+Create `SqlServerBackend/SqlServerBackend.vcxproj` as a Visual Studio 2019 static library project that depends on `DataLoggerCore` and owns only SQL Server backend headers and sources.
+
+### PLAN-1204: Add library example solution
+Create `ExampleAppLib/ExampleAppLib.sln` with `DataLoggerCore`, `SqlServerBackend`, and an `ExampleAppLib` executable project.
+
+### PLAN-1205: Reuse the existing example entry point
+Build the executable from `ExampleApp/main.cpp` so the monolithic and library-based examples use the same application source.
+
+### PLAN-1206: Preserve ODBC linkage
+Link the final executable against `odbc32.lib` while keeping database access inside the real SQL Server ODBC backend.

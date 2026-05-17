@@ -4,22 +4,28 @@ Schema-driven telemetry logger for Microsoft SQL Server.
 
 The project loads CSV schema files, decodes fixed-layout C++ structs by byte offset, adds caller-supplied `timestamp_ms` values, batches rows per table, and writes them to SQL Server through real ODBC parameter-array binding.
 
+For split schemas that all map to the same source struct, `autoRegisterTables()` registers every loaded CSV table and `autoWrite()` writes one timestamped struct row to all of them.
+
 ## Project Layout
 
 - `DataLoggerCore/` - schema loading, validation, binary decoding, table handles, buffering, and flush orchestration.
 - `SqlServerBackend/` - SQL Server ODBC backend, DDL generation, prepared inserts, parameter arrays, diagnostics, and transactions.
 - `ExampleApp/` - minimal real-ODBC example app plus the retained test harness source.
+- `ExampleAppLib/` - separate Visual Studio solution that builds `DataLoggerCore` and `SqlServerBackend` as `.lib` projects and runs the example through those libraries.
 - `ExampleApp/schemas/` - CSV schema files, one file per SQL table.
 - `docs/` - requirements, architecture, design decisions, implementation plan, and test notes.
 
 ## Build
 
-Open `DataLoggerSolution.sln` in Visual Studio 2019 and build `Debug|x64` or `Release|x64`.
+Open `DataLoggerSolution.sln` in Visual Studio 2019 to build the retained monolithic example project.
+
+Open `ExampleAppLib/ExampleAppLib.sln` to build the library-based example. That solution produces static libraries for `DataLoggerCore` and `SqlServerBackend`, then links them into the `ExampleAppLib` executable.
 
 From PowerShell:
 
 ```powershell
 & 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' DataLoggerSolution.sln /p:Configuration=Debug /p:Platform=x64 /m:1
+& 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' ExampleAppLib\ExampleAppLib.sln /p:Configuration=Debug /p:Platform=x64 /m:1
 ```
 
 The project targets C++17, Windows x64, and links `odbc32.lib`.
@@ -33,7 +39,9 @@ $env:SQLLOGGER_CONNECTION_STRING = 'Driver={ODBC Driver 18 for SQL Server};Serve
 .\x64\Debug\DataLogger.exe
 ```
 
-The example loads `ExampleApp/schemas/imu_data.csv`, creates/recreates `[dbo].[imu_data]` according to the configured table policy, writes two rows, and flushes them.
+By default, the example loads `ExampleApp/schemas/imu_data.csv`, creates/recreates `[dbo].[imu_data]` according to the configured table policy, writes two simple sensor rows, and flushes them.
+
+The larger local AO stress payload is guarded by `LOCAL_TEST` in `ExampleApp/main.cpp`. Do not define `LOCAL_TEST` in committed project settings; define it only in a local developer configuration when that private/local payload should be used.
 
 `DataLoggerConfig::printInfoFlag` and `DataLoggerConfig::printErrorFlag` are enabled by default. Successful initialization prints database setup details line by line, and recorded logger errors are printed line by line while remaining available through `lastError()`.
 

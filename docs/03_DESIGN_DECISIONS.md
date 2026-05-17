@@ -381,3 +381,14 @@ Large structs may be split across many CSV/table files to stay within SQL Server
 
 ### Consequence
 Manual `registerTable()` and `write()` remain available for selective table usage. The automatic path uses the existing per-table decode, buffer, and flush behavior and does not add cross-table transaction semantics.
+
+## DEC-032: Add a separate static-library example solution
+
+### Decision
+Keep the original monolithic Visual Studio solution and add a separate `ExampleAppLib/ExampleAppLib.sln` solution that builds `DataLoggerCore` and `SqlServerBackend` as static library projects, then links them into an `ExampleAppLib` executable.
+
+### Reasoning
+The monolithic project remains useful as the original simple open/build path. The additional solution validates the intended library consumption model without moving source ownership or changing the runtime architecture.
+
+### Consequence
+`DataLoggerCore` remains independent of `SqlServerBackend`. `SqlServerBackend` depends on `DataLoggerCore`, and the example executable links both libraries plus `odbc32.lib`.

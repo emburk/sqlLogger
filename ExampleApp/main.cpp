@@ -7,8 +7,36 @@
 #include <memory>
 #include <string>
 
+#ifdef LOCAL_TEST
+// Include the large local AO payload only for explicit local stress runs.
+#include "local/aoMain_types.h"
+#include "local/aoInitialize.c"
+#endif
+
 namespace
 {
+#ifdef LOCAL_TEST
+constexpr std::size_t kBatchSizeRows = 400;
+constexpr int kWriteIterations = 10000;
+constexpr std::int64_t kBaseTimestampMs = 1779062400000;
+#else
+constexpr std::size_t kBatchSizeRows = 2;
+constexpr std::int64_t kFirstTimestampMs = 1779062400000;
+constexpr std::int64_t kSecondTimestampMs = 1779062400001;
+
+// Match the simple example struct layout to ExampleApp/schemas/imu_data.csv.
+#pragma pack(push, 1)
+struct ImuData
+{
+    std::int64_t unusedOrSequence = 0;
+    float gyro[3] = {};
+    float accel[3] = {};
+    double temperature = 0.0;
+    std::uint16_t status = 0;
+};
+#pragma pack(pop)
+#endif
+
 // Read the SQL Server ODBC connection string from the environment.
 std::string readConnectionString()
 {
@@ -24,33 +52,58 @@ std::string readConnectionString()
     return connectionString;
 }
 
-// Print the logger's structured error in a compact example-friendly form.
-int failWithLastError(const DataLoggerCore::DataLogger& logger)
+#ifdef LOCAL_TEST
+// Write the same AO payload to every split table for a deterministic load test.
+bool writeAoRows(DataLoggerCore::DataLogger& logger,
+                 const aoMainStruct_T& ao)
 {
-    const DataLoggerCore::DataLoggerError& error = logger.lastError();
-    if (!error.message.empty())
+    for (int iteration = 0; iteration < kWriteIterations; ++iteration)
     {
-        std::cerr << error.message << '\n';
+        const std::int64_t timestampMs = kBaseTimestampMs + iteration;
+        if (!logger.autoWrite(timestampMs, &ao))
+        {
+            return false;
+        }
     }
-    return 1;
-}
-}
 
-// The example struct is packed so its offsets intentionally match imu_data.csv.
-#pragma pack(push, 1)
-struct ImuData
+    return true;
+}
+#else
+// Build one deterministic simple sensor payload for the default example run.
+ImuData makeSimpleSensorData()
 {
-    std::int64_t unusedOrSequence = 0;
-    float gyro[3] = {};
-    float accel[3] = {};
-    double temperature = 0.0;
-    std::uint16_t status = 0;
-};
-#pragma pack(pop)
+    ImuData sample;
+    sample.unusedOrSequence = 42;
+    sample.gyro[0] = 1.0F;
+    sample.gyro[1] = 2.0F;
+    sample.gyro[2] = 3.0F;
+    sample.accel[0] = 4.0F;
+    sample.accel[1] = 5.0F;
+    sample.accel[2] = 6.0F;
+    sample.temperature = 7.5;
+    sample.status = 9;
+    return sample;
+}
 
-// Configure the real SQL Server backend, write two rows, and flush them.
+// Write two simple sensor rows so the configured batch size triggers a flush.
+bool writeSimpleSensorRows(DataLoggerCore::DataLogger& logger,
+                           DataLoggerCore::TableHandle table,
+                           const ImuData& sample)
+{
+    return logger.write(table, kFirstTimestampMs, &sample) &&
+           logger.write(table, kSecondTimestampMs, &sample);
+}
+#endif
+}
+
+// Configure the real SQL Server backend and run the selected example payload.
 int main()
 {
+#ifdef LOCAL_TEST
+    aoMainStruct_T ao;
+    aoMain_initalizeStruct(&ao);
+#endif
+
     const std::string connectionString = readConnectionString();
     if (connectionString.empty())
     {
@@ -60,41 +113,49 @@ int main()
 
     DataLoggerCore::DataLoggerConfig config;
     config.connectionString = connectionString;
+#ifdef LOCAL_TEST
+    config.schemaDirectory = "ExampleApp\\local\\schemas";
+#else
     config.schemaDirectory = "ExampleApp\\schemas";
-    config.batchSizeRows = 2;
+#endif
+    config.batchSizeRows = kBatchSizeRows;
+    config.existingTablePolicy = DataLoggerCore::ExistingTablePolicy::Drop;
 
     auto backend = std::make_unique<SqlServerBackend::SqlServerOdbcBackend>();
     DataLoggerCore::DataLogger logger(std::move(backend));
     if (!logger.initialize(config))
     {
-        return failWithLastError(logger);
+        return 1;
     }
 
-    const DataLoggerCore::TableHandle imu = logger.registerTable("imu_data");
-    if (!imu.isValid())
+#ifdef LOCAL_TEST
+    if (!logger.autoRegisterTables())
     {
-        return failWithLastError(logger);
+        return 1;
     }
 
-    ImuData sample;
-    sample.unusedOrSequence = 1;
-    sample.gyro[0] = 1.0F;
-    sample.gyro[1] = 2.0F;
-    sample.gyro[2] = 3.0F;
-    sample.accel[0] = 4.0F;
-    sample.accel[1] = 5.0F;
-    sample.accel[2] = 6.0F;
-    sample.temperature = 7.5;
-    sample.status = 9;
-
-    if (!logger.write(imu, 123456789, &sample) ||
-        !logger.write(imu, 123456790, &sample) ||
-        !logger.flush())
+    if (!writeAoRows(logger, ao) || !logger.flush())
     {
-        return failWithLastError(logger);
+        return 1;
     }
 
     logger.shutdown();
-    std::cout << "Inserted example imu_data rows.\n";
+    std::cout << "Inserted AO test rows for " << kWriteIterations << " iterations.\n";
+#else
+    const DataLoggerCore::TableHandle imu = logger.registerTable("imu_data");
+    if (!imu.isValid())
+    {
+        return 1;
+    }
+
+    const ImuData sample = makeSimpleSensorData();
+    if (!writeSimpleSensorRows(logger, imu, sample) || !logger.flush())
+    {
+        return 1;
+    }
+
+    logger.shutdown();
+    std::cout << "Inserted simple sensor rows into imu_data.\n";
+#endif
     return 0;
 }
