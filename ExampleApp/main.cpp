@@ -1,7 +1,10 @@
 #include "DataLogger/BinaryDecoder.h"
 #include "DataLogger/DataLogger.h"
+#include "SqlServerBackend/SqlServerOdbcBackend.h"
 
+#include <cstdlib>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -77,6 +80,47 @@ private:
     std::size_t insertedRowCount_ = 0;
     std::string insertedTableName_;
 };
+
+// Read the optional SQL Server connection string from the process environment.
+std::string readConnectionString()
+{
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, "SQLLOGGER_CONNECTION_STRING") != 0 || value == nullptr)
+    {
+        return {};
+    }
+
+    std::string connectionString(value);
+    std::free(value);
+    return connectionString;
+}
+
+// Use the real ODBC backend only when the caller supplies a connection string.
+std::unique_ptr<DataLoggerCore::IDBBackend> createBackend(const std::string& connectionString,
+                                                          SmokeTestBackend*& smokeBackendView)
+{
+    smokeBackendView = nullptr;
+    if (!connectionString.empty())
+    {
+        return std::make_unique<SqlServerBackend::SqlServerOdbcBackend>();
+    }
+
+    auto backend = std::make_unique<SmokeTestBackend>();
+    smokeBackendView = backend.get();
+    return backend;
+}
+
+// Print the logger's structured error for smoke and integration diagnostics.
+int failWithLastError(const DataLoggerCore::DataLogger& logger)
+{
+    const DataLoggerCore::DataLoggerError& error = logger.lastError();
+    if (!error.message.empty())
+    {
+        std::cerr << error.message << '\n';
+    }
+    return 1;
+}
 }
 
 // The example struct is packed so its offsets intentionally match imu_data.csv.
@@ -94,25 +138,26 @@ struct ImuData
 // Load the example schema, verify decoding, and exercise DataLogger buffering.
 int main()
 {
-    // Phase smoke test: exercise DataLogger through a backend test double.
+    // Use a real ODBC backend when SQLLOGGER_CONNECTION_STRING is provided.
+    const std::string connectionString = readConnectionString();
     DataLoggerCore::DataLoggerConfig config;
-    config.connectionString = "SmokeTestBackend";
+    config.connectionString = !connectionString.empty() ? connectionString : "SmokeTestBackend";
     config.schemaDirectory = "ExampleApp\\schemas";
     config.batchSizeRows = 2;
 
-    auto backend = std::make_unique<SmokeTestBackend>();
-    SmokeTestBackend* backendView = backend.get();
+    SmokeTestBackend* smokeBackendView = nullptr;
+    auto backend = createBackend(connectionString, smokeBackendView);
 
     DataLoggerCore::DataLogger logger(std::move(backend));
     if (!logger.initialize(config))
     {
-        return 1;
+        return failWithLastError(logger);
     }
 
     const DataLoggerCore::TableHandle imu = logger.registerTable("imu_data");
     if (!imu.isValid())
     {
-        return 1;
+        return failWithLastError(logger);
     }
 
     const DataLoggerCore::TableSchema* schema = logger.tableSchema(imu);
@@ -161,27 +206,28 @@ int main()
     // Write two rows so batch-size flushing reaches the backend and clears the buffer.
     if (!logger.write(imu, 123456789, &sample))
     {
-        return 1;
+        return failWithLastError(logger);
     }
 
-    if (backendView->insertedRowCount() != 0)
+    if (smokeBackendView != nullptr && smokeBackendView->insertedRowCount() != 0)
     {
         return 1;
     }
 
     if (!logger.write(imu, 123456790, &sample))
     {
-        return 1;
+        return failWithLastError(logger);
     }
 
-    if (backendView->insertedRowCount() != 2 || backendView->insertedTableName() != "imu_data")
+    if (smokeBackendView != nullptr &&
+        (smokeBackendView->insertedRowCount() != 2 || smokeBackendView->insertedTableName() != "imu_data"))
     {
         return 1;
     }
 
     if (!logger.flush(imu) || !logger.flush())
     {
-        return 1;
+        return failWithLastError(logger);
     }
 
     logger.shutdown();

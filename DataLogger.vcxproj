@@ -73,6 +73,7 @@
     <ClInclude Include="DataLoggerCore\include\DataLogger\SchemaLoaderCsv.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\SchemaValidator.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\TableHandle.h" />
+    <ClInclude Include="SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackend.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="ExampleApp\schemas\imu_data.csv" />

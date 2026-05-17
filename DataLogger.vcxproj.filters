@@ -72,6 +72,9 @@
     <ClInclude Include="DataLoggerCore\include\DataLogger\TableHandle.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
+    <ClInclude Include="SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackend.h">
+      <Filter>SqlServerBackend</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ExampleApp\schemas\imu_data.csv">
