@@ -1,0 +1,351 @@
+# 03 Design Decisions and Justification
+
+This document records the final design decisions and their reasoning.
+
+## DEC-001: Use CSV schema files instead of JSON
+
+### Decision
+Use CSV files as the external schema format.
+
+### Reasoning
+The schema is fundamentally tabular: column name, offset, type, size, and length. CSV is easier to edit, review, and maintain when there are many fields. It also works well with spreadsheet tools.
+
+### Consequence
+The project does not need a JSON library. A robust CSV parser is required.
+
+## DEC-002: One CSV file equals one SQL table
+
+### Decision
+Each `.csv` file in the schema directory defines one SQL table.
+
+### Reasoning
+This gives a clean and direct relation between schema files and tables.
+
+### Consequence
+The schema directory becomes the table registry.
+
+## DEC-003: Filename is table name
+
+### Decision
+The SQL table name is derived from the CSV filename without the extension.
+
+### Example
+
+```text
+imu_data.csv -> imu_data
+```
+
+### Reasoning
+This avoids duplicating table names inside every CSV file.
+
+### Consequence
+Filename validation is required.
+
+## DEC-004: Timestamp is external to struct and schema
+
+### Decision
+The application passes `timestampMs` explicitly for every write.
+
+### Reasoning
+The timestamp is semantically different from payload data. It is the time axis for SQL/Grafana, not a normal struct field.
+
+### Consequence
+The CSV schema describes payload only. The SQL table automatically gets `timestamp_ms BIGINT NOT NULL`.
+
+## DEC-005: Timestamp uses int64 milliseconds since epoch
+
+### Decision
+Use signed 64-bit integer milliseconds since Unix epoch.
+
+### Reasoning
+This is precise enough for 10 Hz telemetry, easy to bind through ODBC, easy to sort in SQL, and Grafana-compatible through query conversion if needed.
+
+### Consequence
+The SQL column is `BIGINT`.
+
+## DEC-006: Use registered table handles
+
+### Decision
+The application obtains a `TableHandle` from a table name, then writes through the handle.
+
+### Example
+
+```cpp
+TableHandle imu = logger.registerTable("imu_data");
+logger.write(imu, timestampMs, &imuStruct);
+```
+
+### Reasoning
+This avoids repeated string lookup during runtime while remaining easy to understand.
+
+### Consequence
+`DataLogger` must validate handles and map them to internal table buffers.
+
+## DEC-007: Remove row ID / sequence ID
+
+### Decision
+Do not add a separate row ID or sequence number column initially.
+
+### Reasoning
+Grafana and SQL time-series queries should order by timestamp. A separate row ID is redundant unless deterministic replay ordering is required independently of time.
+
+### Consequence
+Ordering queries should use `ORDER BY timestamp_ms`.
+
+## DEC-008: Flatten arrays
+
+### Decision
+Flatten array fields into scalar SQL columns using suffixes `_0`, `_1`, ...
+
+### Example
+
+```csv
+gyro,8,float,4,3
+```
+
+expands to:
+
+```text
+gyro_0, gyro_1, gyro_2
+```
+
+### Reasoning
+Flattened scalar columns are simple, SQL Server-compatible, and Grafana-friendly.
+
+### Consequence
+Very large arrays may create wide SQL tables and must be validated against SQL Server limits.
+
+## DEC-009: Numeric-only initial implementation
+
+### Decision
+Support only numeric fields initially.
+
+### Supported types
+
+```text
+int8, uint8, int16, uint16,
+int32, uint32, int64, uint64,
+float, double
+```
+
+### Reasoning
+The initial telemetry requirement is numeric. Avoiding strings keeps ODBC binding and schema validation simpler.
+
+### Consequence
+String and binary blob fields are out of scope for the first implementation.
+
+## DEC-010: Fixed-offset binary decoding
+
+### Decision
+Decode structs by fixed byte offsets defined in CSV.
+
+### Reasoning
+The caller knows the exact struct layout, padding, field sizes, and offsets.
+
+### Consequence
+The logger trusts the schema and caller. It should still use safe reads via `std::memcpy`.
+
+## DEC-011: DataLogger owns schema during runtime
+
+### Decision
+`DataLogger` loads schema files during initialization, owns the schema registry, and treats it as immutable.
+
+### Reasoning
+This avoids runtime reload complexity and keeps all write paths simple.
+
+### Consequence
+Changing schema requires restarting/reinitializing the logger.
+
+## DEC-012: DataLogger owns batching
+
+### Decision
+The main app writes rows. `DataLogger` decides when to flush based on configured batch size or elapsed time.
+
+### Reasoning
+Batching is an internal logging concern. The main application should not need to track row grouping.
+
+### Consequence
+The logger must maintain per-table buffers and flush timers.
+
+## DEC-013: Hybrid flush policy
+
+### Decision
+Flush when either batch size is reached or flush interval expires.
+
+### Reasoning
+Size-based flushing provides efficient SQL writes under continuous data. Time-based flushing prevents data from remaining buffered too long during low-rate or intermittent data.
+
+### Consequence
+Because the design is single-threaded, time flush is checked during `write()` and `update()`/`tick()`.
+
+## DEC-014: Single-threaded design
+
+### Decision
+No background worker thread, queue, or locks initially.
+
+### Reasoning
+The expected data frequency is around 10 Hz, and readability/maintainability is the priority.
+
+### Consequence
+The main application is responsible for calling `update()`/`tick()` periodically if time-based flushing must occur without new writes.
+
+## DEC-015: Real ODBC backend
+
+### Decision
+Implement SQL Server access through real ODBC API calls.
+
+### Reasoning
+The goal is a working SQL Server logger, not only an architecture mock.
+
+### Consequence
+The project must manage ODBC environment, connection, statement handles, diagnostics, transactions, and binding.
+
+## DEC-016: Use ODBC parameter array binding
+
+### Decision
+Use ODBC parameter arrays for batch inserts.
+
+### Reasoning
+This is the highest-performance ODBC batching path while still using standard ODBC concepts.
+
+### Consequence
+The backend must create per-column arrays during flush. This conversion is isolated inside `SqlServerOdbcBackend`.
+
+## DEC-017: Keep external API row-oriented
+
+### Decision
+The application writes one struct row at a time. The backend may internally transform rows to column-wise ODBC arrays.
+
+### Reasoning
+This preserves caller simplicity and keeps ODBC complexity out of the application and `DataLogger` public interface.
+
+### Consequence
+`SqlServerOdbcBackend` must allocate and fill type-specific parameter buffers per column during flush.
+
+## DEC-018: Use transaction per batch
+
+### Decision
+Each batch insert is executed inside a transaction.
+
+### Reasoning
+The chosen failure behavior is “return error and keep buffer.” That is only safe if a failed batch is rolled back and cannot partially commit.
+
+### Consequence
+The backend must disable autocommit around batch execution, commit on success, and rollback on failure.
+
+## DEC-019: Existing table policy is configurable
+
+### Decision
+On initialization, existing tables are either dropped or renamed with a timestamp suffix before fresh tables are created.
+
+### Reasoning
+This supports both destructive clean-run behavior and archive-preserving behavior.
+
+### Consequence
+The configuration must include `ExistingTablePolicy`.
+
+## DEC-020: Rename suffix format
+
+### Decision
+Use suffix format `YYYYMMDD-hhmmss`.
+
+### Example
+
+```text
+imu_data_20260516-143012
+```
+
+### Reasoning
+The format is sortable and readable.
+
+### Consequence
+The implementation needs a datetime formatter.
+
+## DEC-021: SQL tables are generated by the logger
+
+### Decision
+The logger creates SQL tables from CSV schema definitions during initialization.
+
+### Reasoning
+This avoids mismatches between schema files and database tables.
+
+### Consequence
+The backend needs SQL DDL generation.
+
+## DEC-022: SQL identifiers are validated and quoted
+
+### Decision
+Table and column identifiers are validated and quoted using SQL Server bracket syntax.
+
+### Reasoning
+Validation prevents injection and accidental invalid identifiers. Quoting protects against reserved words and special cases.
+
+### Consequence
+Identifier validation is part of schema loading.
+
+## DEC-023: Index timestamp column
+
+### Decision
+Create an index on `timestamp_ms`.
+
+### Reasoning
+Grafana/time-series queries will filter and order by timestamp.
+
+### Consequence
+Table creation should include index creation.
+
+## DEC-024: Validate SQL Server width limits
+
+### Decision
+Validate expanded table width and prepared-statement parameter count before initialization succeeds.
+
+### Reasoning
+The telemetry struct can be large, and flattening can create many columns. SQL Server has limits on columns and parameters.
+
+### Consequence
+Some large telemetry definitions may need to be split into multiple CSV/table schemas.
+
+## DEC-025: No runtime plugin loading initially
+
+### Decision
+Do not implement DLL plugin backend loading initially.
+
+### Reasoning
+The first target is one real SQL Server backend.
+
+### Consequence
+The project still has an interface boundary, so plugin loading can be added later.
+
+## DEC-026: No JSON support initially
+
+### Decision
+Do not support JSON schema initially.
+
+### Reasoning
+CSV is now the confirmed schema format.
+
+### Consequence
+Earlier JSON examples are obsolete.
+
+## DEC-027: Metadata is parsed but not inserted
+
+### Decision
+Optional `unit` and `description` fields are allowed in the CSV but do not become SQL payload columns.
+
+### Reasoning
+Metadata is useful for documentation and future Grafana/dashboard generation, but it should not affect the storage model initially.
+
+### Consequence
+Metadata may be kept in memory or ignored after validation, depending on implementation needs.
+
+## DEC-028: uint64 maps to DECIMAL(20,0)
+
+### Decision
+Full `uint64` support should map to `DECIMAL(20,0)` in SQL Server.
+
+### Reasoning
+SQL Server `BIGINT` is signed and cannot represent the full `uint64` range.
+
+### Consequence
+ODBC binding for `uint64` is more complex than signed 64-bit types. The implementation can use `SQL_NUMERIC_STRUCT` or another explicit numeric conversion path.
+
