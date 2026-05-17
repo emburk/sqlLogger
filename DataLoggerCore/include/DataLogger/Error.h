@@ -10,7 +10,8 @@ enum class ErrorCode
     InvalidConfig,
     SchemaLoadFailed,
     SchemaValidationFailed,
-    InvalidTableHandle
+    InvalidTableHandle,
+    DecodeFailed
 };
 
 struct DataLoggerError

@@ -53,6 +53,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="DataLoggerCore\src\BinaryDecoder.cpp" />
     <ClCompile Include="DataLoggerCore\src\DataLogger.cpp" />
     <ClCompile Include="DataLoggerCore\src\DataLoggerCore.cpp" />
     <ClCompile Include="DataLoggerCore\src\Schema.cpp" />
@@ -63,6 +64,7 @@
     <ClCompile Include="ExampleApp\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="DataLoggerCore\include\DataLogger\BinaryDecoder.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\DataLogger.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\DataLoggerConfig.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\Error.h" />
