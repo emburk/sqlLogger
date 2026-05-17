@@ -68,6 +68,7 @@
     <ClInclude Include="DataLoggerCore\include\DataLogger\DataLogger.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\DataLoggerConfig.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\Error.h" />
+    <ClInclude Include="DataLoggerCore\include\DataLogger\IDBBackend.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\Schema.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\SchemaLoaderCsv.h" />
     <ClInclude Include="DataLoggerCore\include\DataLogger\SchemaValidator.h" />

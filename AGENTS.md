@@ -4,6 +4,8 @@
 Schema-driven telemetry DataLogger for SQL Server.
 
 ## Rules
+- All functions must be briefly expressed with 1-2 line comments for readability
+- All Non legacy c++ implementations should have 1-2 line comments for readability
 - Single-threaded only
 - No async/concurrency
 - Use real ODBC

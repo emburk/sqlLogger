@@ -57,6 +57,9 @@
     <ClInclude Include="DataLoggerCore\include\DataLogger\Error.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
+    <ClInclude Include="DataLoggerCore\include\DataLogger\IDBBackend.h">
+      <Filter>DataLoggerCore</Filter>
+    </ClInclude>
     <ClInclude Include="DataLoggerCore\include\DataLogger\Schema.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>

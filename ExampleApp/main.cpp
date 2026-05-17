@@ -2,7 +2,82 @@
 #include "DataLogger/DataLogger.h"
 
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 #include <variant>
+#include <vector>
+
+namespace
+{
+class SmokeTestBackend final : public DataLoggerCore::IDBBackend
+{
+public:
+    // Treat any non-empty string as a successful smoke-test connection.
+    bool connect(const std::string& connectionString) override
+    {
+        connected_ = !connectionString.empty();
+        return connected_;
+    }
+
+    // Record that table initialization would have run for a loaded schema registry.
+    bool initializeTables(const DataLoggerCore::SchemaRegistry& registry,
+                          const std::string& sqlSchemaName,
+                          DataLoggerCore::ExistingTablePolicy policy) override
+    {
+        (void)policy;
+        tablesInitialized_ = connected_ && !registry.tables.empty() && !sqlSchemaName.empty();
+        return tablesInitialized_;
+    }
+
+    // Mark statements as prepared only after the smoke tables are initialized.
+    bool prepareInsertStatements(const DataLoggerCore::SchemaRegistry& registry,
+                                 const std::string& sqlSchemaName) override
+    {
+        statementsPrepared_ = tablesInitialized_ && !registry.tables.empty() && !sqlSchemaName.empty();
+        return statementsPrepared_;
+    }
+
+    // Count inserted rows so the example can verify DataLogger flush behavior.
+    bool insertBatch(const DataLoggerCore::TableSchema& table,
+                     const std::vector<DataLoggerCore::DecodedRow>& rows) override
+    {
+        if (!statementsPrepared_ || rows.empty())
+        {
+            return false;
+        }
+
+        insertedTableName_ = table.tableName;
+        insertedRowCount_ += rows.size();
+        return true;
+    }
+
+    // The smoke backend only succeeds, so no backend diagnostics are produced.
+    DataLoggerCore::BackendError lastError() const override
+    {
+        return {};
+    }
+
+    // Report the number of rows accepted by insertBatch for smoke assertions.
+    std::size_t insertedRowCount() const
+    {
+        return insertedRowCount_;
+    }
+
+    // Report the last table name accepted by insertBatch for smoke assertions.
+    const std::string& insertedTableName() const
+    {
+        return insertedTableName_;
+    }
+
+private:
+    bool connected_ = false;
+    bool tablesInitialized_ = false;
+    bool statementsPrepared_ = false;
+    std::size_t insertedRowCount_ = 0;
+    std::string insertedTableName_;
+};
+}
 
 // The example struct is packed so its offsets intentionally match imu_data.csv.
 #pragma pack(push, 1)
@@ -16,13 +91,19 @@ struct ImuData
 };
 #pragma pack(pop)
 
+// Load the example schema, verify decoding, and exercise DataLogger buffering.
 int main()
 {
-    // Phase smoke test: load schemas and obtain the handle for imu_data.
+    // Phase smoke test: exercise DataLogger through a backend test double.
     DataLoggerCore::DataLoggerConfig config;
+    config.connectionString = "SmokeTestBackend";
     config.schemaDirectory = "ExampleApp\\schemas";
+    config.batchSizeRows = 2;
 
-    DataLoggerCore::DataLogger logger;
+    auto backend = std::make_unique<SmokeTestBackend>();
+    SmokeTestBackend* backendView = backend.get();
+
+    DataLoggerCore::DataLogger logger(std::move(backend));
     if (!logger.initialize(config))
     {
         return 1;
@@ -52,7 +133,7 @@ int main()
     sample.temperature = 7.5;
     sample.status = 9;
 
-    // Decode one row and verify timestamp plus expanded payload order.
+    // Decode one row directly and verify timestamp plus expanded payload order.
     DataLoggerCore::DecodedRow row;
     DataLoggerCore::DataLoggerError error;
     if (!DataLoggerCore::decodeRow(*schema, 123456789, &sample, row, error))
@@ -77,5 +158,32 @@ int main()
         return 1;
     }
 
+    // Write two rows so batch-size flushing reaches the backend and clears the buffer.
+    if (!logger.write(imu, 123456789, &sample))
+    {
+        return 1;
+    }
+
+    if (backendView->insertedRowCount() != 0)
+    {
+        return 1;
+    }
+
+    if (!logger.write(imu, 123456790, &sample))
+    {
+        return 1;
+    }
+
+    if (backendView->insertedRowCount() != 2 || backendView->insertedTableName() != "imu_data")
+    {
+        return 1;
+    }
+
+    if (!logger.flush(imu) || !logger.flush())
+    {
+        return 1;
+    }
+
+    logger.shutdown();
     return 0;
 }

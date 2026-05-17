@@ -7,6 +7,7 @@
 
 namespace DataLoggerCore
 {
+// Decode one caller-owned struct into row-owned values using fixed schema offsets.
 bool decodeRow(const TableSchema& table,
                std::int64_t timestampMs,
                const void* structPtr,

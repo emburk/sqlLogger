@@ -71,6 +71,8 @@ struct DecodedRow
     std::vector<FieldValue> values;
 };
 
+// Parse a lowercase CSV datatype token into the internal enum.
 bool parseDataType(const std::string& text, DataType& datatype);
+// Return the expected byte size for one supported numeric datatype.
 std::size_t expectedDataTypeSize(DataType datatype);
 }
