@@ -8,7 +8,9 @@ This document lists the requirements for the DataLogger project. Each requiremen
 The project shall be implemented in modern C++ using C++17.
 
 ### REQ-002: IDE target
-The project shall include a Visual Studio 2019 solution file (`.sln`) and Visual Studio C++ project files (`.vcxproj`).
+The project shall include a Visual Studio 2019 solution file (`.sln`) and one Visual Studio C++ project file (`.vcxproj`) initially.
+
+The source layout shall keep module boundaries clear so the project can later be split into multiple Visual Studio projects if needed.
 
 ### REQ-003: Platform target
 The primary build target shall be Windows x64.

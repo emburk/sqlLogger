@@ -13,30 +13,30 @@ DataLoggerSolution.sln
 
 for Visual Studio 2019.
 
-### PLAN-002: Create projects
-Create three initial projects:
+### PLAN-002: Create project
+Create one initial project:
 
 ```text
-DataLoggerCore
-SqlServerBackend
-ExampleApp
+DataLogger.vcxproj
 ```
 
 ### PLAN-003: Configure C++ standard
-Set all projects to C++17.
+Set the project to C++17.
 
 ### PLAN-004: Configure x64
 Set Debug x64 and Release x64 configurations.
 
 ### PLAN-005: Link ODBC
-`SqlServerBackend` shall link against:
+The single project shall link against:
 
 ```text
 odbc32.lib
 ```
 
-### PLAN-006: Project dependencies
-`ExampleApp` depends on `DataLoggerCore` and `SqlServerBackend`.
+### PLAN-006: Source module dependencies
+Keep source-level dependencies clean even though there is only one `.vcxproj`.
+
+`ExampleApp` may include/use both `DataLoggerCore` and `SqlServerBackend`.
 
 `DataLoggerCore` should not depend on `SqlServerBackend` if possible. The concrete backend can be constructed in `ExampleApp` and injected into `DataLogger`, or `DataLogger` can be configured with a backend factory if simpler for the first implementation.
 

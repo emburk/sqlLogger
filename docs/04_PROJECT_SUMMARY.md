@@ -181,6 +181,7 @@ The first complete project should include:
 
 ```text
 DataLoggerSolution.sln
+DataLogger.vcxproj
 DataLoggerCore/
 SqlServerBackend/
 ExampleApp/
@@ -191,9 +192,9 @@ Suggested project structure:
 
 ```text
 DataLoggerSolution.sln
+DataLogger.vcxproj
 
 DataLoggerCore/
-  DataLoggerCore.vcxproj
   include/
     DataLogger.h
     DataLoggerConfig.h
@@ -209,7 +210,6 @@ DataLoggerCore/
     BinaryDecoder.cpp
 
 SqlServerBackend/
-  SqlServerBackend.vcxproj
   include/
     SqlServerOdbcBackend.h
     OdbcHandle.h
@@ -220,7 +220,6 @@ SqlServerBackend/
     SqlTypeMapper.cpp
 
 ExampleApp/
-  ExampleApp.vcxproj
   main.cpp
   TelemetryStructs.h
   schemas/

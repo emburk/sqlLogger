@@ -348,3 +348,14 @@ SQL Server `BIGINT` is signed and cannot represent the full `uint64` range.
 
 ### Consequence
 ODBC binding for `uint64` is more complex than signed 64-bit types. The implementation can use `SQL_NUMERIC_STRUCT` or another explicit numeric conversion path.
+
+## DEC-029: Use one Visual Studio solution and project initially
+
+### Decision
+Use a single Visual Studio 2019 solution containing one C++ project for the first implementation, while keeping the source code separated into clear folders such as `DataLoggerCore`, `SqlServerBackend`, and `ExampleApp`.
+
+### Reasoning
+A single `.vcxproj` keeps the project easy to open, build, and debug without requiring generated static libraries or multi-project solution dependency handling. The code can still preserve architectural boundaries through namespaces, headers, interfaces, and folder organization.
+
+### Consequence
+`DataLoggerCore` and `SqlServerBackend` are source-level modules rather than separate static-library projects initially. The single project links `odbc32.lib` and builds one example executable. Once the project settles, the same folder boundaries can be split back into multiple Visual Studio projects/libraries inside the solution.

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="DataLoggerCore">
+      <UniqueIdentifier>{F51D2418-A597-4D21-8B37-CC7F115CCD6E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SqlServerBackend">
+      <UniqueIdentifier>{F60DF246-DA44-4FF9-BF00-6D8CC44B1449}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ExampleApp">
+      <UniqueIdentifier>{1CB64EDE-7495-49E3-81D7-D8E206999819}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ExampleApp\Schemas">
+      <UniqueIdentifier>{8CBA1760-CC94-412D-A017-70B61348196D}</UniqueIdentifier>
+      <Extensions>csv</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="DataLoggerCore\src\DataLoggerCore.cpp">
+      <Filter>DataLoggerCore</Filter>
+    </ClCompile>
+    <ClCompile Include="SqlServerBackend\src\SqlServerBackend.cpp">
+      <Filter>SqlServerBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="ExampleApp\main.cpp">
+      <Filter>ExampleApp</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ExampleApp\schemas\imu_data.csv">
+      <Filter>ExampleApp\Schemas</Filter>
+    </None>
+  </ItemGroup>
+</Project>

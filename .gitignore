@@ -1,0 +1,9 @@
+# Visual Studio workspace state
+.vs/
+
+# Visual Studio build output
+x64/
+**/x64/
+
+# User-specific Visual Studio files
+*.vcxproj.user
