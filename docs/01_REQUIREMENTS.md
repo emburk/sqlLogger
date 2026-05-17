@@ -253,7 +253,9 @@ The configuration shall include at least:
 - schema directory path;
 - batch size in rows;
 - existing-table policy;
-- optional SQL schema name, defaulting to `dbo`.
+- optional SQL schema name, defaulting to `dbo`;
+- optional info-printing flag, defaulting to enabled;
+- optional error-printing flag, defaulting to enabled.
 
 ### REQ-092: Table handle registration
 The application shall register or obtain a table handle by name before writing data.
@@ -290,6 +292,12 @@ The API shall be designed for single-threaded use and does not need internal loc
 
 ### REQ-099: No production wall-clock dependency
 Production logger code shall not read wall-clock time. Example or test code may use wall-clock time only to produce caller-supplied timestamps.
+
+### REQ-100: Initialization success printing
+`DataLoggerConfig` shall include `printInfoFlag`, enabled by default. When enabled, successful initialization shall print comprehensive line-oriented details after database connection, table initialization, and insert-statement preparation all succeed.
+
+### REQ-101: Error printing
+`DataLoggerConfig` shall include `printErrorFlag`, enabled by default. When enabled, DataLogger shall print every structured schema, configuration, decode, handle, backend, SQL, ODBC, or insertion error that it records while still preserving the error through `lastError()`. Multi-part errors, including backend messages and ODBC diagnostics, shall print with each detail on its own line.
 
 ## 8. Batching requirements
 

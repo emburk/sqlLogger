@@ -35,6 +35,8 @@ $env:SQLLOGGER_CONNECTION_STRING = 'Driver={ODBC Driver 18 for SQL Server};Serve
 
 The example loads `ExampleApp/schemas/imu_data.csv`, creates/recreates `[dbo].[imu_data]` according to the configured table policy, writes two rows, and flushes them.
 
+`DataLoggerConfig::printInfoFlag` and `DataLoggerConfig::printErrorFlag` are enabled by default. Successful initialization prints database setup details line by line, and recorded logger errors are printed line by line while remaining available through `lastError()`.
+
 `ExampleApp/test.cpp` contains the earlier smoke and Phase 9 validation harness. It is retained as a test-tool source file and is not compiled into the default example app.
 
 ## Schema Format
@@ -81,4 +83,3 @@ ORDER BY [timestamp_ms];
 - Phase 8 and Phase 9 test plans/results are in `docs/test_notes/`.
 - Non-database checks passed in Debug and Release.
 - Database checks were manually validated by the project owner.
-

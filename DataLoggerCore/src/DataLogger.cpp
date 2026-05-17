@@ -3,10 +3,28 @@
 #include "DataLogger/BinaryDecoder.h"
 #include "DataLogger/SchemaLoaderCsv.h"
 
+#include <iostream>
 #include <utility>
 
 namespace DataLoggerCore
 {
+namespace
+{
+// Convert the table policy to stable debug text without exposing enum values.
+const char* existingTablePolicyName(ExistingTablePolicy policy)
+{
+    switch (policy)
+    {
+    case ExistingTablePolicy::Drop:
+        return "Drop";
+    case ExistingTablePolicy::RenameWithTimestampSuffix:
+        return "RenameWithTimestampSuffix";
+    }
+
+    return "Unknown";
+}
+}
+
 // Store the backend dependency supplied by the application.
 DataLogger::DataLogger(std::unique_ptr<IDBBackend> backend)
     : backend_(std::move(backend))
@@ -24,6 +42,7 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
 {
     clearError();
     resetRuntimeState();
+    config_ = config;
 
     if (config.schemaDirectory.empty())
     {
@@ -55,13 +74,11 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
         return false;
     }
 
-    config_ = config;
-
     DataLoggerError loadError;
     if (!loadSchemaDirectory(config.schemaDirectory, schemaRegistry_, loadError))
     {
+        setError(loadError);
         resetRuntimeState();
-        lastError_ = loadError;
         return false;
     }
 
@@ -73,22 +90,22 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
 
     if (!backend_->connect(config.connectionString))
     {
-        resetRuntimeState();
         setBackendError(ErrorCode::BackendConnectFailed, "Backend connection failed");
+        resetRuntimeState();
         return false;
     }
 
     if (!backend_->initializeTables(schemaRegistry_, config.sqlSchemaName, config.existingTablePolicy))
     {
-        resetRuntimeState();
         setBackendError(ErrorCode::BackendTableInitFailed, "Backend table initialization failed");
+        resetRuntimeState();
         return false;
     }
 
     if (!backend_->prepareInsertStatements(schemaRegistry_, config.sqlSchemaName))
     {
-        resetRuntimeState();
         setBackendError(ErrorCode::BackendPrepareFailed, "Backend insert preparation failed");
+        resetRuntimeState();
         return false;
     }
 
@@ -102,6 +119,7 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
     }
 
     initialized_ = true;
+    printInitializationSuccess();
     return true;
 }
 
@@ -165,7 +183,7 @@ bool DataLogger::write(TableHandle table, std::int64_t timestampMs, const void* 
     DataLoggerError decodeError;
     if (!decodeRow(*buffer.schema, timestampMs, structPtr, row, decodeError))
     {
-        lastError_ = decodeError;
+        setError(decodeError);
         return false;
     }
 
@@ -272,7 +290,18 @@ void DataLogger::clearError()
 // Store a small structured error object for the caller to inspect.
 void DataLogger::setError(ErrorCode code, const std::string& message)
 {
-    lastError_ = { code, message };
+    setError(DataLoggerError{ code, message });
+}
+
+// Store the latest error and print it when the caller leaves error printing on.
+void DataLogger::setError(const DataLoggerError& error)
+{
+    lastError_ = error;
+    if (config_.printErrorFlag && !lastError_.message.empty())
+    {
+        std::cerr << "DataLogger error:" << '\n'
+                  << lastError_.message << '\n';
+    }
 }
 
 // Preserve backend detail without exposing backend-specific code through DataLogger operations.
@@ -287,19 +316,36 @@ void DataLogger::setBackendError(ErrorCode code, const std::string& prefix)
     std::string message = prefix + ".";
     if (!backendError.message.empty())
     {
-        message += " " + backendError.message;
+        message += "\nBackend error: " + backendError.message;
     }
 
     if (!backendError.diagnostics.empty())
     {
-        message += " ODBC diagnostics:";
+        message += "\nODBC diagnostics:";
         for (const OdbcDiagnostic& diagnostic : backendError.diagnostics)
         {
-            message += " [" + diagnostic.sqlState + ", " + std::to_string(diagnostic.nativeError) + "] " + diagnostic.message;
+            message += "\n  [" + diagnostic.sqlState + ", " + std::to_string(diagnostic.nativeError) + "] " + diagnostic.message;
         }
     }
 
     setError(code, message);
+}
+
+// Emit line-oriented initialization details after database setup succeeds.
+void DataLogger::printInitializationSuccess() const
+{
+    if (!config_.printInfoFlag)
+    {
+        return;
+    }
+
+    std::cout << "DataLogger initialization succeeded:" << '\n'
+              << "Database backend: connected" << '\n'
+              << "SQL schema: [" << config_.sqlSchemaName << "]" << '\n'
+              << "Tables initialized: " << schemaRegistry_.tables.size() << '\n'
+              << "Existing-table policy: " << existingTablePolicyName(config_.existingTablePolicy) << '\n'
+              << "Insert statements: prepared" << '\n'
+              << "Batch size rows: " << config_.batchSizeRows << '\n';
 }
 
 // Reset schema-owned runtime state while keeping the injected backend instance.

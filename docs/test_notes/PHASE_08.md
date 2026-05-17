@@ -16,7 +16,9 @@ The example is expected to demonstrate:
 - row writes with caller-supplied timestamps;
 - automatic batch flush at `batchSizeRows`;
 - explicit flush before shutdown;
-- smoke execution without SQL Server;
+- default-enabled `printInfoFlag` and `printErrorFlag` configuration;
+- logger-owned line-oriented initialization success and error printing;
+- clear no-connection failure when `SQLLOGGER_CONNECTION_STRING` is missing;
 - real ODBC execution when `SQLLOGGER_CONNECTION_STRING` is provided.
 
 ## Test plan
@@ -27,13 +29,14 @@ These checks do not require SQL Server and can be run automatically.
 
 1. Build the solution in `Debug|x64`.
 2. Build the solution in `Release|x64`.
-3. Run the Debug executable without `SQLLOGGER_CONNECTION_STRING` so it uses the smoke backend.
-4. Run the Release executable without `SQLLOGGER_CONNECTION_STRING` so it uses the smoke backend.
-5. Scan for design-rule violations:
+3. Run the Debug executable without `SQLLOGGER_CONNECTION_STRING` and verify it exits before database work with a clear environment-message.
+4. Run the Release executable without `SQLLOGGER_CONNECTION_STRING` and verify it exits before database work with a clear environment-message.
+5. Verify the debug printing flags are present in config, code, and docs.
+6. Scan for design-rule violations:
    - no threading or async primitives;
    - no JSON dependency;
    - no SQLite dependency.
-6. Scan the SQL Server backend for required ODBC API usage:
+7. Scan the SQL Server backend for required ODBC API usage:
    - `SQLDriverConnect`;
    - `SQLPrepare`;
    - `SQLBindParameter`;
@@ -67,8 +70,9 @@ Test run date: 2026-05-17
 |---|---|---|
 | Debug x64 build | Passed | MSBuild completed with 0 warnings and 0 errors. |
 | Release x64 build | Passed | MSBuild completed with 0 warnings and 0 errors. |
-| Debug smoke run | Passed | `x64\Debug\DataLogger.exe` exited with code 0 without `SQLLOGGER_CONNECTION_STRING`. |
-| Release smoke run | Passed | `x64\Release\DataLogger.exe` exited with code 0 without `SQLLOGGER_CONNECTION_STRING`. |
+| Debug no-connection run | Passed | Current AO example is database-gated; `x64\Debug\DataLogger.exe` exited with code 1 and printed `Set SQLLOGGER_CONNECTION_STRING before running the example.` |
+| Release no-connection run | Passed | Current AO example is database-gated; `x64\Release\DataLogger.exe` exited with code 1 and printed `Set SQLLOGGER_CONNECTION_STRING before running the example.` |
+| Debug print flag scan | Passed | `printInfoFlag` and `printErrorFlag` are present in `DataLoggerConfig`, logger implementation, requirements, architecture, design decisions, project summary, README, and Phase 8 plan text; success and multi-part failure output are line-oriented. |
 | Design-rule scan | Passed | No matches for threading/async primitives, JSON libraries, or SQLite in `DataLoggerCore`, `ExampleApp`, or `SqlServerBackend`. |
 | ODBC API scan | Passed | Required real ODBC calls are present in `SqlServerBackend/src/SqlServerBackend.cpp`. |
 
@@ -89,7 +93,7 @@ ODBC calls confirmed by scan:
 
 ### Database-gated checks
 
-Status: completed by manual user validation.
+Status: not rerun for the debug-printing update; previous manual user validation remains recorded below.
 
 Validated checks:
 

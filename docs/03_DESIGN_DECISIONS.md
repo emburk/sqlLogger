@@ -359,3 +359,14 @@ A single `.vcxproj` keeps the project easy to open, build, and debug without req
 
 ### Consequence
 `DataLoggerCore` and `SqlServerBackend` are source-level modules rather than separate static-library projects initially. The single project links `odbc32.lib` and builds one example executable. Once the project settles, the same folder boundaries can be split back into multiple Visual Studio projects/libraries inside the solution.
+
+## DEC-030: Add configurable debug printing
+
+### Decision
+Add `DataLoggerConfig::printInfoFlag` and `DataLoggerConfig::printErrorFlag`, both enabled by default.
+
+### Reasoning
+The logger already returns structured errors through `lastError()`, but the example and integration workflow benefit from immediate console visibility. Line-oriented success details confirm initialization database work completed, and line-oriented printed errors make failed SQL/ODBC/schema paths visible without forcing every caller to duplicate error-printing boilerplate.
+
+### Consequence
+The structured error object remains authoritative for program flow and retry behavior. Console printing is controlled by configuration and can be disabled by callers that need silent library behavior.

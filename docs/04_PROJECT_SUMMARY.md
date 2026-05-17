@@ -47,6 +47,8 @@ config.connectionString = "Driver={ODBC Driver 18 for SQL Server};Server=localho
 config.schemaDirectory = "schemas";
 config.batchSizeRows = 100;
 config.existingTablePolicy = ExistingTablePolicy::RenameWithTimestampSuffix;
+config.printInfoFlag = true;
+config.printErrorFlag = true;
 
 DataLogger logger;
 logger.initialize(config);
@@ -101,6 +103,7 @@ It:
 - loads all CSV files;
 - validates schema definitions;
 - creates an immutable schema registry;
+- optionally prints initialization success and recorded errors;
 - exposes table handles;
 - accepts struct pointers and timestamps;
 - decodes fields using offsets;

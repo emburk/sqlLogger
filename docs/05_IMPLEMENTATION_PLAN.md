@@ -250,6 +250,7 @@ In `initialize(config)`:
 5. Initialize/recreate tables.
 6. Prepare insert statements.
 7. Initialize table buffers.
+8. Print line-oriented initialization success details if `printInfoFlag` is enabled.
 
 ### PLAN-603: Register table
 Implement:
@@ -427,6 +428,9 @@ SELECT
 FROM [dbo].[imu_data]
 ORDER BY [timestamp_ms];
 ```
+
+### PLAN-805: Example debug printing flags
+Show that `DataLoggerConfig` includes `printInfoFlag` and `printErrorFlag`, both enabled by default. The example should rely on logger-owned error printing instead of duplicating `lastError()` output, while still using return values for control flow.
 
 ## Phase 9: Testing checklist
 

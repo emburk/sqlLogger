@@ -111,6 +111,7 @@ DataLogger::initialize(config)
    +--> Backend creates fresh SQL tables
    |
    +--> Backend prepares one INSERT statement per table
+   +--> If printInfoFlag is enabled, print line-oriented initialization details
    |
    +--> DataLogger returns initialized state
 ```
@@ -177,6 +178,9 @@ struct DataLoggerConfig
     std::size_t batchSizeRows = 100;
 
     ExistingTablePolicy existingTablePolicy = ExistingTablePolicy::RenameWithTimestampSuffix;
+
+    bool printInfoFlag = true;
+    bool printErrorFlag = true;
 };
 ```
 
@@ -482,7 +486,7 @@ The backend should use processed-row counters and parameter status arrays for di
 ## 8. Error handling architecture
 
 ### ARCH-050: Error object
-Use a small project-level error object rather than printing errors directly.
+Use a small project-level error object as the authoritative error surface. `DataLoggerConfig::printErrorFlag` may additionally print recorded errors for debug visibility.
 
 Suggested model:
 
@@ -522,6 +526,9 @@ struct OdbcDiagnostic
 
 ### ARCH-052: No silent failures
 No schema, SQL, ODBC, or insertion error shall be silently ignored.
+
+### ARCH-053: Initialization debug printing
+When `DataLoggerConfig::printInfoFlag` is enabled, initialization prints line-oriented success details only after the backend connection, table initialization, and insert preparation steps have all succeeded. When `printErrorFlag` is enabled, multi-part errors print with each backend or ODBC diagnostic detail on its own line.
 
 ## 9. SQL Server wide-table risk
 

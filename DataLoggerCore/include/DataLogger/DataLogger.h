@@ -58,8 +58,12 @@ private:
     void clearError();
     // Store a logger-owned error code and human-readable message.
     void setError(ErrorCode code, const std::string& message);
+    // Store an already-built logger error and optionally print it.
+    void setError(const DataLoggerError& error);
     // Convert backend diagnostics into the logger error surface.
     void setBackendError(ErrorCode code, const std::string& prefix);
+    // Print one initialization summary when configured debug info is enabled.
+    void printInitializationSuccess() const;
     // Clear schema-derived runtime state while preserving backend ownership.
     void resetRuntimeState();
 
