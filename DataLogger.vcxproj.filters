@@ -77,6 +77,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="ExampleApp\test.cpp">
+      <Filter>ExampleApp</Filter>
+    </None>
     <None Include="ExampleApp\schemas\imu_data.csv">
       <Filter>ExampleApp\Schemas</Filter>
     </None>

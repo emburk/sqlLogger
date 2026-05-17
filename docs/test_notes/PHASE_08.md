@@ -89,9 +89,9 @@ ODBC calls confirmed by scan:
 
 ### Database-gated checks
 
-Status: pending user approval and connection-string confirmation.
+Status: completed by manual user validation.
 
-Planned remaining checks:
+Validated checks:
 
 1. Run the example with `SQLLOGGER_CONNECTION_STRING` set.
 2. Verify `[dbo].[imu_data]` exists with expected columns.

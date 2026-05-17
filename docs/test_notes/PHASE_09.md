@@ -73,12 +73,13 @@ Build note:
 
 - The first Debug build after adding the harness failed because `ExampleApp/main.cpp` used schema loader and validator APIs without including their headers directly. The includes were added, then Debug and Release builds passed cleanly.
 - MSBuild still reports that `pwsh.exe` is not found for the vcpkg applocal step, then falls back to Windows PowerShell and succeeds.
+- Later project cleanup moved this harness source to `ExampleApp/test.cpp`; the default `ExampleApp/main.cpp` is now a minimal real-ODBC example app.
 
 ### Database-gated checks
 
-Status: pending user approval and connection-string confirmation.
+Status: completed by manual user validation.
 
-Planned remaining checks:
+Validated checks:
 
 1. Run the example with `SQLLOGGER_CONNECTION_STRING` set.
 2. Verify `[dbo].[imu_data]` exists with expected columns.
