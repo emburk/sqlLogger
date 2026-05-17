@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <variant>
 
+// The example struct is packed so its offsets intentionally match imu_data.csv.
 #pragma pack(push, 1)
 struct ImuData
 {
@@ -17,6 +18,7 @@ struct ImuData
 
 int main()
 {
+    // Phase smoke test: load schemas and obtain the handle for imu_data.
     DataLoggerCore::DataLoggerConfig config;
     config.schemaDirectory = "ExampleApp\\schemas";
 
@@ -38,6 +40,7 @@ int main()
         return 1;
     }
 
+    // Populate known values so the decoder can be checked without SQL or ODBC.
     ImuData sample;
     sample.unusedOrSequence = 42;
     sample.gyro[0] = 1.0F;
@@ -49,6 +52,7 @@ int main()
     sample.temperature = 7.5;
     sample.status = 9;
 
+    // Decode one row and verify timestamp plus expanded payload order.
     DataLoggerCore::DecodedRow row;
     DataLoggerCore::DataLoggerError error;
     if (!DataLoggerCore::decodeRow(*schema, 123456789, &sample, row, error))

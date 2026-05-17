@@ -2,9 +2,11 @@
 
 This document gives a practical implementation sequence for Codex or another code-generation agent.
 
+Plan IDs use `PLAN-ijj`, where `i` is the phase number and `jj` is the two-digit step number within that phase.
+
 ## Phase 1: Create Visual Studio solution structure
 
-### PLAN-001: Create solution
+### PLAN-101: Create solution
 Create:
 
 ```text
@@ -13,27 +15,27 @@ DataLoggerSolution.sln
 
 for Visual Studio 2019.
 
-### PLAN-002: Create project
+### PLAN-102: Create project
 Create one initial project:
 
 ```text
 DataLogger.vcxproj
 ```
 
-### PLAN-003: Configure C++ standard
+### PLAN-103: Configure C++ standard
 Set the project to C++17.
 
-### PLAN-004: Configure x64
+### PLAN-104: Configure x64
 Set Debug x64 and Release x64 configurations.
 
-### PLAN-005: Link ODBC
+### PLAN-105: Link ODBC
 The single project shall link against:
 
 ```text
 odbc32.lib
 ```
 
-### PLAN-006: Source module dependencies
+### PLAN-106: Source module dependencies
 Keep source-level dependencies clean even though there is only one `.vcxproj`.
 
 `ExampleApp` may include/use both `DataLoggerCore` and `SqlServerBackend`.
@@ -49,7 +51,7 @@ DataLogger logger(std::move(backend));
 
 ## Phase 2: Define core types
 
-### PLAN-010: Define DataType enum
+### PLAN-201: Define DataType enum
 Implement the supported datatype enum:
 
 ```cpp
@@ -68,7 +70,7 @@ enum class DataType
 };
 ```
 
-### PLAN-011: Define schema structs
+### PLAN-202: Define schema structs
 Implement:
 
 - `ColumnSchema`;
@@ -76,7 +78,7 @@ Implement:
 - `TableSchema`;
 - `SchemaRegistry`.
 
-### PLAN-012: Define value variant
+### PLAN-203: Define value variant
 Implement:
 
 ```cpp
@@ -85,7 +87,7 @@ using FieldValue = std::variant<...>;
 
 with all supported numeric types.
 
-### PLAN-013: Define DecodedRow
+### PLAN-204: Define DecodedRow
 Implement:
 
 ```cpp
@@ -96,18 +98,18 @@ struct DecodedRow
 };
 ```
 
-### PLAN-014: Define error types
+### PLAN-205: Define error types
 Implement project-level error structures for DataLogger and backend diagnostics.
 
 ## Phase 3: Implement CSV schema loader
 
-### PLAN-020: Directory enumeration
+### PLAN-301: Directory enumeration
 Load all `.csv` files from `DataLoggerConfig::schemaDirectory`.
 
-### PLAN-021: Filename parsing
+### PLAN-302: Filename parsing
 Derive table name from filename without extension.
 
-### PLAN-022: CSV parsing
+### PLAN-303: CSV parsing
 Implement a CSV parser that supports:
 
 - header row;
@@ -115,60 +117,60 @@ Implement a CSV parser that supports:
 - optional empty metadata fields;
 - optional `#` comment lines if practical.
 
-### PLAN-023: Required columns
+### PLAN-304: Required columns
 Require:
 
 ```csv
 column_name,offset,datatype,size,length
 ```
 
-### PLAN-024: Optional columns
+### PLAN-305: Optional columns
 Allow:
 
 ```csv
 unit,description
 ```
 
-### PLAN-025: Datatype parser
+### PLAN-306: Datatype parser
 Parse datatype strings case-insensitively or document exact lowercase requirement.
 
 Recommended: accept lowercase only for clarity.
 
-### PLAN-026: Numeric parser
+### PLAN-307: Numeric parser
 Parse `offset`, `size`, and `length` as unsigned integer values.
 
-### PLAN-027: Schema expansion
+### PLAN-308: Schema expansion
 For every `ColumnSchema`, generate `ExpandedColumnSchema` entries:
 
 - `length == 1`: `column_name`
 - `length > 1`: `column_name_0`, `column_name_1`, ...
 
-### PLAN-028: Store metadata
+### PLAN-309: Store metadata
 Store `unit` and `description` if provided.
 
 ## Phase 4: Implement schema validation
 
-### PLAN-030: Validate table names
+### PLAN-401: Validate table names
 Allow only safe SQL identifiers:
 
 ```text
 [A-Za-z_][A-Za-z0-9_]*
 ```
 
-### PLAN-031: Validate column names
+### PLAN-402: Validate column names
 Apply the same identifier rule to base and expanded column names.
 
-### PLAN-032: Reject timestamp conflict
+### PLAN-403: Reject timestamp conflict
 Reject any expanded payload column named:
 
 ```text
 timestamp_ms
 ```
 
-### PLAN-033: Reject duplicates
+### PLAN-404: Reject duplicates
 Reject duplicate expanded columns in a table.
 
-### PLAN-034: Validate datatype size
+### PLAN-405: Validate datatype size
 Check expected size for each datatype.
 
 Recommended expected sizes:
@@ -180,25 +182,25 @@ Recommended expected sizes:
 | int32/uint32/float | 4 |
 | int64/uint64/double | 8 |
 
-### PLAN-035: Validate length
+### PLAN-406: Validate length
 `length` must be at least `1`.
 
-### PLAN-036: Validate SQL Server table width
+### PLAN-407: Validate SQL Server table width
 Validate expanded SQL columns including `timestamp_ms` before table creation.
 
 Use named constants for the initial validation limits so tests and future changes can update them deliberately.
 
-### PLAN-037: Validate prepared statement parameter count
+### PLAN-408: Validate prepared statement parameter count
 Validate that the number of parameter markers required by the prepared insert is acceptable for SQL Server/ODBC.
 
 Use named constants for the initial parameter-count limits so tests and future changes can update them deliberately.
 
-### PLAN-038: Fail fast
+### PLAN-409: Fail fast
 If validation fails, initialization fails with a clear message.
 
 ## Phase 5: Implement binary decoder
 
-### PLAN-040: Safe read helper
+### PLAN-501: Safe read helper
 Implement a safe read helper:
 
 ```cpp
@@ -213,32 +215,32 @@ T readValue(const void* base, std::size_t offset)
 }
 ```
 
-### PLAN-041: Decode expanded column
+### PLAN-502: Decode expanded column
 For each `ExpandedColumnSchema`, read the typed value from:
 
 ```text
 base + expandedColumn.offset
 ```
 
-### PLAN-042: Decode full row
+### PLAN-503: Decode full row
 Build a `DecodedRow` with:
 
 - external `timestampMs`;
 - vector of field values in expanded column order.
 
-### PLAN-043: No pointer retention
+### PLAN-504: No pointer retention
 Do not store user struct pointers after `write()` returns.
 
 ## Phase 6: Implement DataLogger
 
-### PLAN-050: Constructor
+### PLAN-601: Constructor
 Allow backend injection:
 
 ```cpp
 explicit DataLogger(std::unique_ptr<IDBBackend> backend);
 ```
 
-### PLAN-051: Initialize
+### PLAN-602: Initialize
 In `initialize(config)`:
 
 1. Load CSV schemas.
@@ -249,14 +251,14 @@ In `initialize(config)`:
 6. Prepare insert statements.
 7. Initialize table buffers.
 
-### PLAN-052: Register table
+### PLAN-603: Register table
 Implement:
 
 ```cpp
 TableHandle registerTable(const std::string& tableName);
 ```
 
-### PLAN-053: Write
+### PLAN-604: Write
 Implement:
 
 ```cpp
@@ -271,12 +273,12 @@ Steps:
 4. Append row to that table buffer.
 5. If batch size reached, flush that table.
 
-### PLAN-054: Clock ownership
+### PLAN-605: Clock ownership
 Do not implement production logger wall-clock reads or time-based flush checks.
 
 Example/test code may use wall-clock time only to produce caller-supplied timestamps.
 
-### PLAN-055: Flush one table
+### PLAN-606: Flush one table
 Implement:
 
 ```cpp
@@ -289,7 +291,7 @@ If backend insert succeeds, clear buffer.
 
 If backend insert fails, keep buffer and return false.
 
-### PLAN-056: Flush all tables
+### PLAN-607: Flush all tables
 Implement:
 
 ```cpp
@@ -298,37 +300,37 @@ bool flush();
 
 Flush all non-empty table buffers.
 
-### PLAN-057: Shutdown
+### PLAN-608: Shutdown
 Implement explicit `shutdown()` to flush and disconnect/cleanup.
 
 ## Phase 7: Implement SQL Server ODBC backend
 
-### PLAN-060: RAII handle wrappers
+### PLAN-701: RAII handle wrappers
 Implement RAII wrappers for:
 
 - environment handle;
 - connection handle;
 - statement handle.
 
-### PLAN-061: Connect
+### PLAN-702: Connect
 Use ODBC connection string and allocate/connect handles.
 
-### PLAN-062: Diagnostics
+### PLAN-703: Diagnostics
 Implement a utility to collect ODBC diagnostics using `SQLGetDiagRec`.
 
-### PLAN-063: Existing table policy
+### PLAN-704: Existing table policy
 For each table:
 
 - if drop policy: drop old table if exists;
 - if rename policy: rename old table with suffix, then create fresh table.
 
-### PLAN-064: Generate CREATE TABLE
+### PLAN-705: Generate CREATE TABLE
 Generate table DDL from `TableSchema`.
 
-### PLAN-065: Generate timestamp index
+### PLAN-706: Generate timestamp index
 Create index on `timestamp_ms`.
 
-### PLAN-066: SQL type mapping
+### PLAN-707: SQL type mapping
 Implement type mapping from `DataType` to SQL Server type.
 
 Recommended:
@@ -346,7 +348,7 @@ Recommended:
 | Float | REAL |
 | Double | FLOAT(53) |
 
-### PLAN-067: Prepare insert statements
+### PLAN-708: Prepare insert statements
 For each table, prepare:
 
 ```sql
@@ -354,7 +356,7 @@ INSERT INTO [schema].[table] ([timestamp_ms], [col1], [col2], ...)
 VALUES (?, ?, ?, ...);
 ```
 
-### PLAN-068: Bind parameter arrays
+### PLAN-709: Bind parameter arrays
 For each flush batch:
 
 1. Allocate one array per SQL column.
@@ -365,7 +367,7 @@ For each flush batch:
 6. Bind each parameter.
 7. Execute statement.
 
-### PLAN-069: Transaction
+### PLAN-710: Transaction
 For each batch:
 
 1. Disable autocommit or begin manual commit mode.
@@ -374,7 +376,7 @@ For each batch:
 4. Roll back if failure.
 5. Restore state if required.
 
-### PLAN-070: Handle uint64
+### PLAN-711: Handle uint64
 Implement a correct strategy for `uint64` -> `DECIMAL(20,0)`.
 
 Recommended path:
@@ -386,7 +388,7 @@ Do not silently cast full-range `uint64` to signed `int64`.
 
 ## Phase 8: Example app
 
-### PLAN-080: Define example struct
+### PLAN-801: Define example struct
 Example:
 
 ```cpp
@@ -404,17 +406,17 @@ struct ImuData
 
 The actual offsets in CSV must match the chosen struct layout.
 
-### PLAN-081: Example CSV
+### PLAN-802: Example CSV
 Create:
 
 ```text
 ExampleApp/schemas/imu_data.csv
 ```
 
-### PLAN-082: Example initialization
+### PLAN-803: Example initialization
 Show config setup, backend creation, logger initialization, table registration, writes, and flush.
 
-### PLAN-083: Example SQL query for Grafana
+### PLAN-804: Example SQL query for Grafana
 Provide a sample query:
 
 ```sql
@@ -428,28 +430,28 @@ ORDER BY [timestamp_ms];
 
 ## Phase 9: Testing checklist
 
-### PLAN-090: Unit test schema parsing
+### PLAN-901: Unit test schema parsing
 Test valid and invalid CSV files.
 
-### PLAN-091: Unit test expansion
+### PLAN-902: Unit test expansion
 Test scalar and array flattening.
 
-### PLAN-092: Unit test duplicate rejection
+### PLAN-903: Unit test duplicate rejection
 Test duplicate columns after expansion.
 
-### PLAN-093: Unit test binary decoding
+### PLAN-904: Unit test binary decoding
 Use a known struct and verify decoded values.
 
-### PLAN-094: Integration test table creation
+### PLAN-905: Integration test table creation
 Connect to a test SQL Server database and verify generated tables.
 
-### PLAN-095: Integration test insert
+### PLAN-906: Integration test insert
 Insert a small batch and verify rows in SQL Server.
 
-### PLAN-096: Failure test rollback
+### PLAN-907: Failure test rollback
 Force backend failure and verify buffer remains and no partial batch is committed.
 
-### PLAN-097: Wide schema test
+### PLAN-908: Wide schema test
 Create a schema exceeding configured SQL limits and verify initialization fails clearly.
 
 ## Phase 10: Suggested implementation order

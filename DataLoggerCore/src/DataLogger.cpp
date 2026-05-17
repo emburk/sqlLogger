@@ -4,6 +4,8 @@
 
 namespace DataLoggerCore
 {
+// Load and validate schemas, then build the table-name index used for handle lookup.
+// This phase stops before any backend connection or SQL table work.
 bool DataLogger::initialize(const DataLoggerConfig& config)
 {
     clearError();
@@ -24,6 +26,7 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
         return false;
     }
 
+    // Schema loading owns CSV parsing, validation, and expanded-column generation.
     DataLoggerError loadError;
     if (!loadSchemaDirectory(config.schemaDirectory, schemaRegistry_, loadError))
     {
@@ -31,6 +34,7 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
         return false;
     }
 
+    // Register table names once so runtime registration does not scan the schema list.
     for (std::size_t i = 0; i < schemaRegistry_.tables.size(); ++i)
     {
         const TableSchema& table = schemaRegistry_.tables[i];
@@ -41,6 +45,7 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
     return true;
 }
 
+// Resolve a validated schema table name into a compact handle for later write calls.
 TableHandle DataLogger::registerTable(const std::string& tableName)
 {
     clearError();
@@ -61,11 +66,13 @@ TableHandle DataLogger::registerTable(const std::string& tableName)
     return TableHandle(found->second);
 }
 
+// A valid handle is just an in-range schema registry index.
 bool DataLogger::isValidTableHandle(TableHandle handle) const
 {
     return handle.isValid() && handle.index() < schemaRegistry_.tables.size();
 }
 
+// Return the schema behind a handle, or nullptr if the caller supplied an invalid handle.
 const TableSchema* DataLogger::tableSchema(TableHandle handle) const
 {
     if (!isValidTableHandle(handle))
@@ -76,21 +83,25 @@ const TableSchema* DataLogger::tableSchema(TableHandle handle) const
     return &schemaRegistry_.tables[handle.index()];
 }
 
+// Expose immutable runtime schema metadata for later backend/table creation code.
 const SchemaRegistry& DataLogger::schemaRegistry() const
 {
     return schemaRegistry_;
 }
 
+// Keep error state queryable without printing or throwing from core code.
 const DataLoggerError& DataLogger::lastError() const
 {
     return lastError_;
 }
 
+// Reset the last operation error before starting a new public operation.
 void DataLogger::clearError()
 {
     lastError_ = DataLoggerError{};
 }
 
+// Store a small structured error object for the caller to inspect.
 void DataLogger::setError(ErrorCode code, const std::string& message)
 {
     lastError_ = { code, message };

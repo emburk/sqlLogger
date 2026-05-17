@@ -6,6 +6,7 @@ namespace DataLoggerCore
 {
 namespace
 {
+// Copy bytes into a typed value without aliasing or alignment assumptions.
 template<typename T>
 T readValue(const void* base, std::size_t offset)
 {
@@ -14,6 +15,7 @@ T readValue(const void* base, std::size_t offset)
     return value;
 }
 
+// Convert one expanded schema column into the matching numeric variant value.
 FieldValue decodeField(const void* base, const ExpandedColumnSchema& column)
 {
     switch (column.datatype)
@@ -44,6 +46,8 @@ FieldValue decodeField(const void* base, const ExpandedColumnSchema& column)
 }
 }
 
+// Decode a caller-owned struct into row-owned values in expanded-column order.
+// The caller remains responsible for passing memory matching the CSV offsets.
 bool decodeRow(const TableSchema& table,
                std::int64_t timestampMs,
                const void* structPtr,
@@ -60,6 +64,7 @@ bool decodeRow(const TableSchema& table,
     decoded.timestampMs = timestampMs;
     decoded.values.reserve(table.expandedColumns.size());
 
+    // Copy every payload value now so no caller pointer is retained after this function.
     for (const ExpandedColumnSchema& column : table.expandedColumns)
     {
         decoded.values.push_back(decodeField(structPtr, column));

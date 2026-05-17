@@ -11,6 +11,7 @@ namespace
 {
 constexpr const char* kTimestampColumnName = "timestamp_ms";
 
+// Check array offset math before computing offset + index * size.
 bool willOverflowOffset(std::size_t offset, std::size_t size, std::size_t index)
 {
     if (index == 0)
@@ -22,6 +23,7 @@ bool willOverflowOffset(std::size_t offset, std::size_t size, std::size_t index)
     return size > (maxValue - offset) / index;
 }
 
+// Validate one table and populate its expanded scalar SQL columns.
 bool validateAndExpandTable(TableSchema& table, DataLoggerError& error)
 {
     if (!isValidSqlIdentifier(table.tableName))
@@ -41,6 +43,7 @@ bool validateAndExpandTable(TableSchema& table, DataLoggerError& error)
     table.expandedColumns.clear();
     std::set<std::string> expandedNames;
 
+    // Expand base columns into the exact SQL payload columns used by later phases.
     for (const ColumnSchema& column : table.columns)
     {
         if (!isValidSqlIdentifier(column.baseName))
@@ -109,6 +112,7 @@ bool validateAndExpandTable(TableSchema& table, DataLoggerError& error)
         }
     }
 
+    // Include timestamp_ms because generated INSERT statements will bind it too.
     const std::size_t sqlColumnCount = table.expandedColumns.size() + 1;
     if (sqlColumnCount > kSqlServerMaxColumnsPerTable)
     {
@@ -130,6 +134,7 @@ bool validateAndExpandTable(TableSchema& table, DataLoggerError& error)
 }
 }
 
+// Keep identifier validation conservative so later SQL generation can safely bracket names.
 bool isValidSqlIdentifier(const std::string& identifier)
 {
     if (identifier.empty())
@@ -155,6 +160,7 @@ bool isValidSqlIdentifier(const std::string& identifier)
     return true;
 }
 
+// Validate all tables, reject duplicate table names, and finalize expanded columns.
 bool validateAndExpandSchemaRegistry(SchemaRegistry& registry, DataLoggerError& error)
 {
     if (registry.tables.empty())

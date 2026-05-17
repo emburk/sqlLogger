@@ -21,6 +21,7 @@ struct CsvRecord
     std::size_t lineNumber = 0;
 };
 
+// Trim simple ASCII whitespace around unquoted CSV fields and header names.
 std::string trim(const std::string& text)
 {
     std::size_t first = 0;
@@ -38,6 +39,8 @@ std::string trim(const std::string& text)
     return text.substr(first, last - first);
 }
 
+// Parse one CSV line, including quoted fields and escaped double quotes.
+// Multiline quoted fields are intentionally out of scope for this schema format.
 bool parseCsvLine(const std::string& line,
                   std::vector<std::string>& fields,
                   std::string& errorMessage)
@@ -47,6 +50,7 @@ bool parseCsvLine(const std::string& line,
     std::string field;
     bool inQuotes = false;
 
+    // Walk character by character so commas inside quotes remain part of the field.
     for (std::size_t i = 0; i < line.size(); ++i)
     {
         const char character = line[i];
@@ -102,6 +106,7 @@ bool parseCsvLine(const std::string& line,
     return true;
 }
 
+// Read non-empty, non-comment CSV records while preserving original line numbers.
 bool readCsvRecords(const std::filesystem::path& path,
                     std::vector<CsvRecord>& records,
                     DataLoggerError& error)
@@ -148,6 +153,7 @@ bool readCsvRecords(const std::filesystem::path& path,
     return true;
 }
 
+// Parse unsigned decimal values only; offsets, sizes, and lengths cannot be negative.
 bool parseUnsignedSize(const std::string& text,
                        std::size_t& value)
 {
@@ -169,6 +175,7 @@ bool parseUnsignedSize(const std::string& text,
     return !stream.fail() && stream.eof();
 }
 
+// Validate that a required CSV column exists before row parsing begins.
 bool requireHeader(const std::map<std::string, std::size_t>& header,
                    const std::string& name,
                    const std::filesystem::path& path,
@@ -183,6 +190,7 @@ bool requireHeader(const std::map<std::string, std::size_t>& header,
     return true;
 }
 
+// Load one CSV file into a raw TableSchema; validation/array expansion happens later.
 bool loadSchemaFile(const std::filesystem::path& path,
                     TableSchema& table,
                     DataLoggerError& error)
@@ -202,6 +210,7 @@ bool loadSchemaFile(const std::filesystem::path& path,
     table = TableSchema{};
     table.tableName = path.stem().string();
 
+    // Build a name-to-index map from the header so optional columns can appear in any order.
     const CsvRecord& headerRecord = records.front();
     std::map<std::string, std::size_t> header;
     for (std::size_t i = 0; i < headerRecord.fields.size(); ++i)
@@ -216,6 +225,7 @@ bool loadSchemaFile(const std::filesystem::path& path,
         header[name] = i;
     }
 
+    // Keep the schema surface deliberately small: required payload fields plus metadata only.
     const std::vector<std::string> allowedHeaders = {
         "column_name",
         "offset",
@@ -245,6 +255,7 @@ bool loadSchemaFile(const std::filesystem::path& path,
         return false;
     }
 
+    // Convert each data row into one base column; arrays are still represented by length.
     for (std::size_t i = 1; i < records.size(); ++i)
     {
         const CsvRecord& record = records[i];
@@ -312,6 +323,7 @@ bool loadSchemaFile(const std::filesystem::path& path,
 }
 }
 
+// Load every CSV schema file in a directory and return a fully validated registry.
 bool loadSchemaDirectory(const std::string& schemaDirectory,
                          SchemaRegistry& registry,
                          DataLoggerError& error)
@@ -342,6 +354,7 @@ bool loadSchemaDirectory(const std::string& schemaDirectory,
         }
     }
 
+    // Sort files for deterministic table indexes and stable handle values.
     std::sort(csvFiles.begin(), csvFiles.end());
 
     for (const std::filesystem::path& csvFile : csvFiles)

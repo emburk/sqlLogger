@@ -2,6 +2,7 @@
 
 namespace DataLoggerCore
 {
+// Map CSV datatype tokens to the internal enum; accepted names stay lowercase by design.
 bool parseDataType(const std::string& text, DataType& datatype)
 {
     if (text == "int8")
@@ -58,6 +59,7 @@ bool parseDataType(const std::string& text, DataType& datatype)
     return false;
 }
 
+// Return the byte size required by each supported fixed-width numeric payload type.
 std::size_t expectedDataTypeSize(DataType datatype)
 {
     switch (datatype)
