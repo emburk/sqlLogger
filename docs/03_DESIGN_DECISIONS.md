@@ -159,24 +159,24 @@ Changing schema requires restarting/reinitializing the logger.
 ## DEC-012: DataLogger owns batching
 
 ### Decision
-The main app writes rows. `DataLogger` decides when to flush based on configured batch size or elapsed time.
+The main app writes rows. `DataLogger` decides when to flush automatically based on configured batch size.
 
 ### Reasoning
 Batching is an internal logging concern. The main application should not need to track row grouping.
 
 ### Consequence
-The logger must maintain per-table buffers and flush timers.
+The logger must maintain per-table buffers. Remaining rows are flushed through explicit manual flush calls or shutdown handling.
 
-## DEC-013: Hybrid flush policy
+## DEC-013: Batch-size-only flush policy
 
 ### Decision
-Flush when either batch size is reached or flush interval expires.
+Flush automatically when batch size is reached. Flush remaining rows through explicit `flush()` calls.
 
 ### Reasoning
-Size-based flushing provides efficient SQL writes under continuous data. Time-based flushing prevents data from remaining buffered too long during low-rate or intermittent data.
+Size-based flushing provides deterministic SQL writes without requiring production logger code to read wall-clock time.
 
 ### Consequence
-Because the design is single-threaded, time flush is checked during `write()` and `update()`/`tick()`.
+The application should call `flush()` at appropriate lifecycle points, especially before shutdown.
 
 ## DEC-014: Single-threaded design
 
@@ -187,7 +187,7 @@ No background worker thread, queue, or locks initially.
 The expected data frequency is around 10 Hz, and readability/maintainability is the priority.
 
 ### Consequence
-The main application is responsible for calling `update()`/`tick()` periodically if time-based flushing must occur without new writes.
+The production logger remains deterministic and does not depend on wall-clock time. Example/test code may use wall-clock time only to produce caller-supplied timestamps.
 
 ## DEC-015: Real ODBC backend
 
@@ -348,4 +348,3 @@ SQL Server `BIGINT` is signed and cannot represent the full `uint64` range.
 
 ### Consequence
 ODBC binding for `uint64` is more complex than signed 64-bit types. The implementation can use `SQL_NUMERIC_STRUCT` or another explicit numeric conversion path.
-

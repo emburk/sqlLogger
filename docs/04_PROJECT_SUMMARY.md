@@ -37,8 +37,7 @@ The main application:
 2. Initializes the logger.
 3. Registers table handles.
 4. Supplies timestamped struct data to the logger.
-5. Periodically calls `update()`/`tick()` if time-based flushing is needed.
-6. Calls `flush()` before shutdown.
+5. Calls `flush()` before shutdown or whenever remaining buffered rows should be persisted.
 
 Example:
 
@@ -47,7 +46,6 @@ DataLoggerConfig config;
 config.connectionString = "Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=Telemetry;Trusted_Connection=yes;";
 config.schemaDirectory = "schemas";
 config.batchSizeRows = 100;
-config.flushIntervalMs = 1000;
 config.existingTablePolicy = ExistingTablePolicy::RenameWithTimestampSuffix;
 
 DataLogger logger;
@@ -59,7 +57,6 @@ ImuData data{};
 std::int64_t timestampMs = getCurrentUnixTimeMilliseconds();
 
 logger.write(imu, timestampMs, &data);
-logger.update(timestampMs);
 logger.flush();
 ```
 
@@ -109,7 +106,7 @@ It:
 - decodes fields using offsets;
 - flattens arrays;
 - buffers rows by table;
-- triggers flush by batch size or time interval;
+- triggers flush by batch size or explicit flush call;
 - calls the backend to persist batches.
 
 ## What IDBBackend does
@@ -187,7 +184,6 @@ DataLoggerSolution.sln
 DataLoggerCore/
 SqlServerBackend/
 ExampleApp/
-schemas/
 docs/
 ```
 
@@ -227,9 +223,8 @@ ExampleApp/
   ExampleApp.vcxproj
   main.cpp
   TelemetryStructs.h
-
-schemas/
-  imu_data.csv
+  schemas/
+    imu_data.csv
 ```
 
 ## Success definition
@@ -240,8 +235,7 @@ The project is successful when:
 2. The logger loads CSV schemas from a folder.
 3. SQL Server tables are recreated according to the configured policy.
 4. The application writes timestamped structs through table handles.
-5. Rows are buffered and flushed by batch size or time interval.
+5. Rows are buffered and flushed by batch size or explicit flush call.
 6. SQL Server receives rows through real ODBC parameter array binding.
 7. Failed flushes roll back and preserve the logger buffer.
 8. Grafana can query tables by `timestamp_ms`.
-

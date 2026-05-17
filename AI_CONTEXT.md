@@ -48,8 +48,8 @@ Application
 - Strings: not supported initially.
 - Metadata: optional `unit` and `description` columns may exist in CSV, but they do not affect SQL insertion.
 - Threading: single-threaded.
-- Flush policy: hybrid; flush when batch size is reached or when flush interval expires.
-- Time-based flush in a single-threaded design is checked on `write()` and through an explicit `update()`/`tick()` method.
+- Flush policy: batch-size-only; flush when the configured batch size is reached or through explicit manual flush.
+- Production logger code must not read wall-clock time. Example/test code may use wall clock only to produce external timestamps supplied by the caller.
 - Flush failure behavior: return error and keep buffer.
 - To make “keep buffer on failure” safe, backend batch execution must use a transaction and roll back failed batches.
 - Table initialization: delete existing tables or rename them with suffix `YYYYMMDD-hhmmss` before creating new tables, controlled by an option flag.
@@ -74,4 +74,3 @@ If a telemetry struct expands beyond SQL Server limits, the design should be ext
 - `docs/03_DESIGN_DECISIONS.md`: final decisions and rationale.
 - `docs/04_PROJECT_SUMMARY.md`: concise project summary.
 - `docs/05_IMPLEMENTATION_PLAN.md`: suggested build-ready implementation plan.
-

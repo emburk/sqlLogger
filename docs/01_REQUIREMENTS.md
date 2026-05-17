@@ -250,7 +250,6 @@ The configuration shall include at least:
 - SQL Server ODBC connection string;
 - schema directory path;
 - batch size in rows;
-- flush interval in milliseconds;
 - existing-table policy;
 - optional SQL schema name, defaulting to `dbo`.
 
@@ -287,25 +286,24 @@ The API shall provide a method to flush all table buffers.
 ### REQ-098: Single-threaded use
 The API shall be designed for single-threaded use and does not need internal locks.
 
-### REQ-099: Explicit update/tick method
-Because the system is single-threaded, the logger shall provide `update()` or `tick()` so the main loop can trigger time-based flushes even when no new rows arrive.
+### REQ-099: No production wall-clock dependency
+Production logger code shall not read wall-clock time. Example or test code may use wall-clock time only to produce caller-supplied timestamps.
 
 ## 8. Batching requirements
 
 ### REQ-110: Internal buffering
 `DataLogger` shall buffer decoded rows internally per table.
 
-### REQ-111: Hybrid flush policy
-A table buffer shall be flushed when either:
+### REQ-111: Batch-size-only flush policy
+A table buffer shall be flushed automatically when the configured batch size is reached.
 
-- the configured batch size is reached; or
-- the configured flush interval has elapsed since the previous flush for that table.
+Rows may also be flushed through explicit manual flush calls.
 
 ### REQ-112: Batch size configurable
 Batch size shall be configurable during initialization.
 
-### REQ-113: Flush interval configurable
-Flush interval shall be configurable during initialization.
+### REQ-113: No flush interval configuration
+Flush interval configuration is not required initially.
 
 ### REQ-114: No background thread
 No background flushing thread shall be used initially.
@@ -381,6 +379,8 @@ The initial implementation shall not require a row ID or sequence ID column.
 ### REQ-134: SQL limits validation
 Before creating tables or preparing statements, the implementation shall validate table width and parameter count against SQL Server practical limits.
 
+Initial limits shall be represented as named constants so tests and future implementation changes can update them deliberately.
+
 ### REQ-135: Too-wide table behavior
 If an expanded schema is too wide for the selected SQL Server insertion strategy, initialization shall fail clearly and recommend splitting the schema into multiple CSV/table files.
 
@@ -432,4 +432,3 @@ DLL/plugin-style backend loading is not required initially.
 
 ### REQ-205: No row ID initially
 A separate row ID or sequence column is not required initially.
-

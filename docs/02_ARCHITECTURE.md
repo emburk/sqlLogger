@@ -25,7 +25,7 @@ The DataLogger is a schema-driven telemetry ingestion system. It decodes fixed-l
 | - flattens arrays                                        |
 | - stores timestamp_ms                                    |
 | - buffers decoded rows per table                         |
-| - triggers flush by size or elapsed time                 |
+| - triggers flush by batch size or explicit flush call    |
 +-----------------------------+----------------------------+
                               |
                               | insertBatch(table, rows)
@@ -69,7 +69,6 @@ It owns:
 - timestamp insertion;
 - per-table buffers;
 - batch-size flush checks;
-- time-based flush checks;
 - flush orchestration.
 
 ### ARCH-002: Backend responsibility
@@ -140,24 +139,13 @@ validate handle
    -> prepend timestamp_ms
    -> append decoded row to table buffer
    -> if buffer.size >= batchSize: flush table
-   -> else if flush interval elapsed: flush table
 ```
 
-### 3.4 Time-based flush flow
+### 3.4 Clock ownership
 
-Because the system is single-threaded and has no background worker, time-based flush is not truly asynchronous. It is checked during `write()` and through an explicit method such as:
+Production logger code does not read wall-clock time. The application supplies `timestampMs` for storage, and example/test code may use wall clock only to produce those caller-supplied timestamps.
 
-```cpp
-logger.update(nowMs);
-```
-
-or:
-
-```cpp
-logger.tick(nowMs);
-```
-
-The main loop should call this periodically if data may stop arriving but pending buffers should still be flushed after the interval.
+Pending buffers are flushed automatically by batch size or manually through `flush()`.
 
 ### 3.5 Manual flush flow
 
@@ -187,7 +175,6 @@ struct DataLoggerConfig
     std::string sqlSchemaName = "dbo";
 
     std::size_t batchSizeRows = 100;
-    std::int64_t flushIntervalMs = 1000;
 
     ExistingTablePolicy existingTablePolicy = ExistingTablePolicy::RenameWithTimestampSuffix;
 };
@@ -231,8 +218,6 @@ public:
     bool write(TableHandle table,
                std::int64_t timestampMs,
                const void* structPtr);
-
-    bool update(std::int64_t nowMs);
 
     bool flush();
     bool flush(TableHandle table);
@@ -327,7 +312,6 @@ struct TableBuffer
     TableHandle handle;
     const TableSchema* schema = nullptr;
     std::vector<DecodedRow> rows;
-    std::int64_t lastFlushTimeMs = 0;
 };
 ```
 
@@ -568,4 +552,3 @@ payload_attitude.csv
 ```
 
 Each table receives the same external timestamp value from the main application.
-

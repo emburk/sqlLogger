@@ -186,8 +186,12 @@ Recommended expected sizes:
 ### PLAN-036: Validate SQL Server table width
 Validate expanded SQL columns including `timestamp_ms` before table creation.
 
+Use named constants for the initial validation limits so tests and future changes can update them deliberately.
+
 ### PLAN-037: Validate prepared statement parameter count
 Validate that the number of parameter markers required by the prepared insert is acceptable for SQL Server/ODBC.
+
+Use named constants for the initial parameter-count limits so tests and future changes can update them deliberately.
 
 ### PLAN-038: Fail fast
 If validation fails, initialization fails with a clear message.
@@ -266,16 +270,11 @@ Steps:
 3. Decode row.
 4. Append row to that table buffer.
 5. If batch size reached, flush that table.
-6. Else if interval elapsed, flush that table.
 
-### PLAN-054: Update/tick
-Implement:
+### PLAN-054: Clock ownership
+Do not implement production logger wall-clock reads or time-based flush checks.
 
-```cpp
-bool update(std::int64_t nowMs);
-```
-
-Flush any non-empty table buffer whose flush interval has elapsed.
+Example/test code may use wall-clock time only to produce caller-supplied timestamps.
 
 ### PLAN-055: Flush one table
 Implement:
@@ -286,7 +285,7 @@ bool flush(TableHandle table);
 
 If buffer is empty, return success.
 
-If backend insert succeeds, clear buffer and update flush time.
+If backend insert succeeds, clear buffer.
 
 If backend insert fails, keep buffer and return false.
 
@@ -409,11 +408,11 @@ The actual offsets in CSV must match the chosen struct layout.
 Create:
 
 ```text
-schemas/imu_data.csv
+ExampleApp/schemas/imu_data.csv
 ```
 
 ### PLAN-082: Example initialization
-Show config setup, backend creation, logger initialization, table registration, writes, update, and flush.
+Show config setup, backend creation, logger initialization, table registration, writes, and flush.
 
 ### PLAN-083: Example SQL query for Grafana
 Provide a sample query:
@@ -468,4 +467,3 @@ Create a schema exceeding configured SQL limits and verify initialization fails 
 11. Add example app.
 12. Add Visual Studio 2019 solution/project files.
 13. Add tests or manual validation utilities.
-
