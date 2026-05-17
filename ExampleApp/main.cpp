@@ -1,11 +1,16 @@
 #include "DataLogger/BinaryDecoder.h"
 #include "DataLogger/DataLogger.h"
+#include "DataLogger/SchemaLoaderCsv.h"
+#include "DataLogger/SchemaValidator.h"
 #include "SqlServerBackend/SqlServerOdbcBackend.h"
 
 #include <cstdlib>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -81,6 +86,69 @@ private:
     std::string insertedTableName_;
 };
 
+class Phase9RetryBackend final : public DataLoggerCore::IDBBackend
+{
+public:
+    bool failNextInsert = true;
+    std::size_t insertAttempts = 0;
+    std::size_t insertedRows = 0;
+
+    // Accept any non-empty connection string for local DataLogger behavior tests.
+    bool connect(const std::string& connectionString) override
+    {
+        connected_ = !connectionString.empty();
+        return connected_;
+    }
+
+    // Confirm schema loading reached the backend initialization stage.
+    bool initializeTables(const DataLoggerCore::SchemaRegistry& registry,
+                          const std::string& sqlSchemaName,
+                          DataLoggerCore::ExistingTablePolicy policy) override
+    {
+        (void)policy;
+        initialized_ = connected_ && !registry.tables.empty() && !sqlSchemaName.empty();
+        return initialized_;
+    }
+
+    // Confirm insert preparation was requested after table initialization.
+    bool prepareInsertStatements(const DataLoggerCore::SchemaRegistry& registry,
+                                 const std::string& sqlSchemaName) override
+    {
+        prepared_ = initialized_ && !registry.tables.empty() && !sqlSchemaName.empty();
+        return prepared_;
+    }
+
+    // Fail the first insert on demand, then accept rows to verify retry behavior.
+    bool insertBatch(const DataLoggerCore::TableSchema& table,
+                     const std::vector<DataLoggerCore::DecodedRow>& rows) override
+    {
+        (void)table;
+        ++insertAttempts;
+        if (failNextInsert)
+        {
+            failNextInsert = false;
+            error_.message = "Intentional Phase 9 insert failure.";
+            return false;
+        }
+
+        insertedRows += rows.size();
+        error_ = {};
+        return true;
+    }
+
+    // Return the latest intentional backend error for DataLogger error wrapping.
+    DataLoggerCore::BackendError lastError() const override
+    {
+        return error_;
+    }
+
+private:
+    bool connected_ = false;
+    bool initialized_ = false;
+    bool prepared_ = false;
+    DataLoggerCore::BackendError error_;
+};
+
 // Read the optional SQL Server connection string from the process environment.
 std::string readConnectionString()
 {
@@ -121,6 +189,249 @@ int failWithLastError(const DataLoggerCore::DataLogger& logger)
     }
     return 1;
 }
+
+// Return the workspace-local directory used by the opt-in Phase 9 harness.
+std::filesystem::path phase9Root()
+{
+    return std::filesystem::path("x64") / "Phase9TestData";
+}
+
+// Write one test schema file, creating parent directories when needed.
+bool writeTextFile(const std::filesystem::path& path, const std::string& text)
+{
+    std::error_code createError;
+    std::filesystem::create_directories(path.parent_path(), createError);
+    if (createError)
+    {
+        return false;
+    }
+
+    std::ofstream output(path, std::ios::trunc);
+    if (!output)
+    {
+        return false;
+    }
+
+    output << text;
+    return static_cast<bool>(output);
+}
+
+// Record a failed assertion while keeping the remaining Phase 9 checks running.
+bool expectPhase9(bool condition, const std::string& message, std::vector<std::string>& failures)
+{
+    if (!condition)
+    {
+        failures.push_back(message);
+        return false;
+    }
+
+    return true;
+}
+
+// Create the valid schema used by parsing, expansion, decoding, and retry tests.
+bool prepareValidPhase9Schema(const std::filesystem::path& directory)
+{
+    const std::string schema =
+        "column_name,offset,datatype,size,length,unit,description\n"
+        "# comments should be ignored\n"
+        "gyro,0,float,4,3,rad/s,\"body angular, rate\"\n"
+        "status,12,uint16,2,1,,status code\n";
+    return writeTextFile(directory / "phase9_valid.csv", schema);
+}
+
+// Verify CSV loading, quoted metadata parsing, and scalar/array expansion order.
+bool testSchemaParsingAndExpansion(std::vector<std::string>& failures)
+{
+    const std::filesystem::path directory = phase9Root() / "valid";
+    if (!expectPhase9(prepareValidPhase9Schema(directory), "failed to create valid Phase 9 schema", failures))
+    {
+        return false;
+    }
+
+    DataLoggerCore::SchemaRegistry registry;
+    DataLoggerCore::DataLoggerError error;
+    const bool loaded = DataLoggerCore::loadSchemaDirectory(directory.string(), registry, error);
+
+    bool passed = true;
+    passed &= expectPhase9(loaded, "valid schema did not load: " + error.message, failures);
+    passed &= expectPhase9(registry.tables.size() == 1, "valid schema registry table count was not 1", failures);
+    if (!loaded || registry.tables.empty())
+    {
+        return false;
+    }
+
+    const DataLoggerCore::TableSchema& table = registry.tables.front();
+    passed &= expectPhase9(table.tableName == "phase9_valid", "table name was not derived from filename", failures);
+    passed &= expectPhase9(table.columns.size() == 2, "base column count was not 2", failures);
+    passed &= expectPhase9(table.columns[0].description == "body angular, rate", "quoted description was not parsed correctly", failures);
+    passed &= expectPhase9(table.expandedColumns.size() == 4, "expanded column count was not 4", failures);
+    passed &= expectPhase9(table.expandedColumns[0].sqlName == "gyro_0", "expanded column 0 was not gyro_0", failures);
+    passed &= expectPhase9(table.expandedColumns[1].sqlName == "gyro_1", "expanded column 1 was not gyro_1", failures);
+    passed &= expectPhase9(table.expandedColumns[2].sqlName == "gyro_2", "expanded column 2 was not gyro_2", failures);
+    passed &= expectPhase9(table.expandedColumns[3].sqlName == "status", "scalar column was not kept as status", failures);
+    return passed;
+}
+
+// Verify duplicate expanded SQL names are rejected by schema validation.
+bool testDuplicateColumnRejection(std::vector<std::string>& failures)
+{
+    const std::filesystem::path directory = phase9Root() / "duplicate";
+    const std::string schema =
+        "column_name,offset,datatype,size,length\n"
+        "gyro,0,float,4,2\n"
+        "gyro_0,8,float,4,1\n";
+    if (!expectPhase9(writeTextFile(directory / "phase9_duplicate.csv", schema), "failed to create duplicate schema", failures))
+    {
+        return false;
+    }
+
+    DataLoggerCore::SchemaRegistry registry;
+    DataLoggerCore::DataLoggerError error;
+    const bool loaded = DataLoggerCore::loadSchemaDirectory(directory.string(), registry, error);
+    bool passed = true;
+    passed &= expectPhase9(!loaded, "duplicate expanded column schema unexpectedly loaded", failures);
+    passed &= expectPhase9(error.message.find("Duplicate expanded column") != std::string::npos,
+                           "duplicate schema did not report duplicate expanded column",
+                           failures);
+    return passed;
+}
+
+// Verify fixed-offset binary decoding produces row-owned values in schema order.
+bool testBinaryDecoding(std::vector<std::string>& failures)
+{
+    const std::filesystem::path directory = phase9Root() / "valid";
+    DataLoggerCore::SchemaRegistry registry;
+    DataLoggerCore::DataLoggerError error;
+    if (!DataLoggerCore::loadSchemaDirectory(directory.string(), registry, error) || registry.tables.empty())
+    {
+        failures.push_back("valid schema was unavailable for binary decoding: " + error.message);
+        return false;
+    }
+
+#pragma pack(push, 1)
+    struct Phase9Payload
+    {
+        float gyro[3] = {};
+        std::uint16_t status = 0;
+    };
+#pragma pack(pop)
+
+    Phase9Payload payload;
+    payload.gyro[0] = 1.25F;
+    payload.gyro[1] = 2.5F;
+    payload.gyro[2] = 3.75F;
+    payload.status = 12;
+
+    DataLoggerCore::DecodedRow row;
+    const bool decoded = DataLoggerCore::decodeRow(registry.tables.front(), 987654321, &payload, row, error);
+
+    bool passed = true;
+    passed &= expectPhase9(decoded, "binary row did not decode: " + error.message, failures);
+    passed &= expectPhase9(row.timestampMs == 987654321, "decoded timestamp did not match caller value", failures);
+    passed &= expectPhase9(row.values.size() == 4, "decoded value count was not 4", failures);
+    if (!decoded || row.values.size() != 4)
+    {
+        return false;
+    }
+
+    passed &= expectPhase9(std::get<float>(row.values[0]) == 1.25F, "decoded gyro_0 mismatch", failures);
+    passed &= expectPhase9(std::get<float>(row.values[1]) == 2.5F, "decoded gyro_1 mismatch", failures);
+    passed &= expectPhase9(std::get<float>(row.values[2]) == 3.75F, "decoded gyro_2 mismatch", failures);
+    passed &= expectPhase9(std::get<std::uint16_t>(row.values[3]) == 12, "decoded status mismatch", failures);
+    return passed;
+}
+
+// Verify a failed flush keeps rows buffered so a later retry can persist them.
+bool testFlushFailureRetention(std::vector<std::string>& failures)
+{
+    auto backend = std::make_unique<Phase9RetryBackend>();
+    Phase9RetryBackend* backendView = backend.get();
+
+    DataLoggerCore::DataLoggerConfig config;
+    config.connectionString = "Phase9RetryBackend";
+    config.schemaDirectory = (phase9Root() / "valid").string();
+    config.batchSizeRows = 1;
+
+    DataLoggerCore::DataLogger logger(std::move(backend));
+    bool passed = true;
+    passed &= expectPhase9(logger.initialize(config), "retry logger did not initialize: " + logger.lastError().message, failures);
+    const DataLoggerCore::TableHandle handle = logger.registerTable("phase9_valid");
+    passed &= expectPhase9(handle.isValid(), "retry logger did not register phase9_valid", failures);
+    if (!passed)
+    {
+        return false;
+    }
+
+#pragma pack(push, 1)
+    struct Phase9Payload
+    {
+        float gyro[3] = {};
+        std::uint16_t status = 0;
+    };
+#pragma pack(pop)
+
+    Phase9Payload payload;
+    payload.gyro[0] = 4.0F;
+    payload.gyro[1] = 5.0F;
+    payload.gyro[2] = 6.0F;
+    payload.status = 7;
+
+    passed &= expectPhase9(!logger.write(handle, 1000, &payload), "write unexpectedly succeeded during intentional insert failure", failures);
+    passed &= expectPhase9(backendView->insertAttempts == 1, "first failed insert was not attempted exactly once", failures);
+    passed &= expectPhase9(logger.flush(handle), "retry flush did not succeed: " + logger.lastError().message, failures);
+    passed &= expectPhase9(backendView->insertAttempts == 2, "retry flush did not attempt insert exactly once", failures);
+    passed &= expectPhase9(backendView->insertedRows == 1, "retained row was not inserted after retry", failures);
+    logger.shutdown();
+    return passed;
+}
+
+// Verify a schema exceeding the configured SQL column limit fails clearly.
+bool testWideSchemaRejection(std::vector<std::string>& failures)
+{
+    std::ostringstream schema;
+    schema << "column_name,offset,datatype,size,length\n";
+    schema << "wide,0,float,4," << DataLoggerCore::kSqlServerMaxColumnsPerTable << "\n";
+
+    const std::filesystem::path directory = phase9Root() / "wide";
+    if (!expectPhase9(writeTextFile(directory / "phase9_wide.csv", schema.str()), "failed to create wide schema", failures))
+    {
+        return false;
+    }
+
+    DataLoggerCore::SchemaRegistry registry;
+    DataLoggerCore::DataLoggerError error;
+    const bool loaded = DataLoggerCore::loadSchemaDirectory(directory.string(), registry, error);
+
+    bool passed = true;
+    passed &= expectPhase9(!loaded, "wide schema unexpectedly loaded", failures);
+    passed &= expectPhase9(error.message.find("Split the schema") != std::string::npos,
+                           "wide schema did not include split-schema guidance",
+                           failures);
+    return passed;
+}
+
+// Run the opt-in Phase 9 non-database validation suite.
+int runPhase9Tests()
+{
+    std::vector<std::string> failures;
+    testSchemaParsingAndExpansion(failures);
+    testDuplicateColumnRejection(failures);
+    testBinaryDecoding(failures);
+    testFlushFailureRetention(failures);
+    testWideSchemaRejection(failures);
+
+    if (!failures.empty())
+    {
+        for (const std::string& failure : failures)
+        {
+            std::cerr << "PHASE9_TEST_FAILURE: " << failure << '\n';
+        }
+        return 1;
+    }
+
+    std::cout << "PHASE9_TESTS_PASSED\n";
+    return 0;
+}
 }
 
 // The example struct is packed so its offsets intentionally match imu_data.csv.
@@ -136,8 +447,13 @@ struct ImuData
 #pragma pack(pop)
 
 // Load the example schema, verify decoding, and exercise DataLogger buffering.
-int main()
+int main(int argc, char* argv[])
 {
+    if (argc == 2 && std::string(argv[1]) == "--phase9-tests")
+    {
+        return runPhase9Tests();
+    }
+
     // Use a real ODBC backend when SQLLOGGER_CONNECTION_STRING is provided.
     const std::string connectionString = readConnectionString();
     DataLoggerCore::DataLoggerConfig config;
