@@ -29,8 +29,12 @@ public:
 
     // Resolve a loaded schema table name to a reusable runtime handle.
     TableHandle registerTable(const std::string& tableName);
+    // Register every table loaded from the configured schema directory.
+    bool autoRegisterTables();
     // Decode one caller-owned struct row and append it to the table buffer.
     bool write(TableHandle table, std::int64_t timestampMs, const void* structPtr);
+    // Write one caller-owned struct row to every auto-registered table.
+    bool autoWrite(std::int64_t timestampMs, const void* structPtr);
     // Flush all non-empty table buffers in schema order.
     bool flush();
     // Flush one table buffer while preserving rows if backend insertion fails.
@@ -72,6 +76,7 @@ private:
     SchemaRegistry schemaRegistry_;
     std::unordered_map<std::string, std::size_t> tableNameToIndex_;
     std::vector<TableBuffer> tableBuffers_;
+    std::vector<TableHandle> autoRegisteredTables_;
     DataLoggerError lastError_;
     bool initialized_ = false;
 };

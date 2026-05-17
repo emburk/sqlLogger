@@ -458,7 +458,36 @@ Force backend failure and verify buffer remains and no partial batch is committe
 ### PLAN-908: Wide schema test
 Create a schema exceeding configured SQL limits and verify initialization fails clearly.
 
-## Phase 10: Suggested implementation order
+## Phase 10: Automatic registration and multi-table write
+
+### PLAN-1001: Store auto-registered handles
+Add a `DataLogger` member that stores the handles selected by automatic registration.
+
+### PLAN-1002: Register all loaded tables
+Implement:
+
+```cpp
+bool autoRegisterTables();
+```
+
+The method shall require initialized state, clear any previous automatic registration list, and register every loaded schema table in deterministic schema registry order.
+
+### PLAN-1003: Write all registered tables
+Implement:
+
+```cpp
+bool autoWrite(std::int64_t timestampMs, const void* structPtr);
+```
+
+The method shall require a prior successful `autoRegisterTables()` call and then write the same caller-owned struct pointer to every auto-registered table.
+
+### PLAN-1004: Preserve existing behavior
+Keep manual `registerTable()` and `write()` behavior unchanged. `autoWrite()` shall reuse the existing per-table decode, buffering, automatic batch flush, and failure-retention behavior.
+
+### PLAN-1005: Update AO example
+Update `ExampleApp/main.cpp` to use `autoRegisterTables()` and `autoWrite()` instead of maintaining an explicit table-name list and manual per-table write loop.
+
+## Phase 11: Suggested implementation order
 
 1. Implement schema model.
 2. Implement CSV parser.
@@ -473,3 +502,4 @@ Create a schema exceeding configured SQL limits and verify initialization fails 
 11. Add example app.
 12. Add Visual Studio 2019 solution/project files.
 13. Add tests or manual validation utilities.
+14. Add automatic table registration and multi-table write helpers.

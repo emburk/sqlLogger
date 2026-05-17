@@ -370,3 +370,14 @@ The logger already returns structured errors through `lastError()`, but the exam
 
 ### Consequence
 The structured error object remains authoritative for program flow and retry behavior. Console printing is controlled by configuration and can be disabled by callers that need silent library behavior.
+
+## DEC-031: Add automatic table registration and write helpers
+
+### Decision
+Add `autoRegisterTables()` and `autoWrite(timestampMs, structPtr)` as convenience APIs for schema directories where every loaded CSV table maps to the same source struct.
+
+### Reasoning
+Large structs may be split across many CSV/table files to stay within SQL Server limits. Since `DataLogger` already owns the loaded schema registry, requiring the application to repeat every table name creates avoidable boilerplate and a drift risk between the schema folder and the example code.
+
+### Consequence
+Manual `registerTable()` and `write()` remain available for selective table usage. The automatic path uses the existing per-table decode, buffer, and flush behavior and does not add cross-table transaction semantics.

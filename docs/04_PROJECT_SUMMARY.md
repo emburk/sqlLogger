@@ -105,7 +105,9 @@ It:
 - creates an immutable schema registry;
 - optionally prints initialization success and recorded errors;
 - exposes table handles;
+- can auto-register every loaded table from the schema directory;
 - accepts struct pointers and timestamps;
+- can write one struct row to every auto-registered table;
 - decodes fields using offsets;
 - flattens arrays;
 - buffers rows by table;

@@ -299,6 +299,15 @@ Production logger code shall not read wall-clock time. Example or test code may 
 ### REQ-101: Error printing
 `DataLoggerConfig` shall include `printErrorFlag`, enabled by default. When enabled, DataLogger shall print every structured schema, configuration, decode, handle, backend, SQL, ODBC, or insertion error that it records while still preserving the error through `lastError()`. Multi-part errors, including backend messages and ODBC diagnostics, shall print with each detail on its own line.
 
+### REQ-102: Automatic table registration
+The API shall provide `autoRegisterTables()` to register all tables loaded from `.csv` files in the configured schema directory. The registration order shall follow the deterministic schema registry order.
+
+### REQ-103: Automatic multi-table write
+The API shall provide `autoWrite(timestampMs, structPtr)` to write the same caller-owned struct pointer to every table registered by `autoRegisterTables()`.
+
+### REQ-104: Automatic API error behavior
+Calling `autoRegisterTables()` before initialization or `autoWrite()` before automatic registration shall fail clearly and preserve the error through `lastError()`.
+
 ## 8. Batching requirements
 
 ### REQ-110: Internal buffering

@@ -124,6 +124,14 @@ TableHandle imu = logger.registerTable("imu_data");
 
 The handle maps to an internal table index. This avoids repeated string lookups during high-frequency or repeated writes.
 
+For schemas split into many CSV/table files that map to the same source struct, the application may register every loaded table at once:
+
+```cpp
+logger.autoRegisterTables();
+```
+
+This stores handles for every table loaded from the schema directory in deterministic schema order.
+
 ### 3.3 Write flow
 
 ```cpp
@@ -141,6 +149,14 @@ validate handle
    -> append decoded row to table buffer
    -> if buffer.size >= batchSize: flush table
 ```
+
+For split schemas, the application may write the same struct pointer to every auto-registered table:
+
+```cpp
+logger.autoWrite(timestampMs, &payloadStruct);
+```
+
+`autoWrite()` uses the same decode and buffering path as handle-based writes. It does not introduce cross-table transactions; each table still flushes according to the existing per-table batch behavior.
 
 ### 3.4 Clock ownership
 
@@ -218,10 +234,13 @@ public:
     void shutdown();
 
     TableHandle registerTable(const std::string& tableName);
+    bool autoRegisterTables();
 
     bool write(TableHandle table,
                std::int64_t timestampMs,
                const void* structPtr);
+    bool autoWrite(std::int64_t timestampMs,
+                   const void* structPtr);
 
     bool flush();
     bool flush(TableHandle table);

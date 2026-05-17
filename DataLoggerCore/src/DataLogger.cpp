@@ -161,6 +161,28 @@ TableHandle DataLogger::registerTable(const std::string& tableName)
     return TableHandle(found->second);
 }
 
+// Cache handles for every loaded table so callers can write split schemas together.
+bool DataLogger::autoRegisterTables()
+{
+    clearError();
+
+    if (!initialized_)
+    {
+        setError(ErrorCode::InvalidConfig, "DataLogger must be initialized before automatic table registration.");
+        return false;
+    }
+
+    autoRegisteredTables_.clear();
+    autoRegisteredTables_.reserve(tableBuffers_.size());
+
+    for (const TableBuffer& buffer : tableBuffers_)
+    {
+        autoRegisteredTables_.push_back(buffer.handle);
+    }
+
+    return true;
+}
+
 // Decode and buffer one row, then flush this table if the configured batch size is reached.
 bool DataLogger::write(TableHandle table, std::int64_t timestampMs, const void* structPtr)
 {
@@ -192,6 +214,34 @@ bool DataLogger::write(TableHandle table, std::int64_t timestampMs, const void* 
     if (buffer.rows.size() >= config_.batchSizeRows)
     {
         return flush(table);
+    }
+
+    return true;
+}
+
+// Write one decoded row into every table selected by automatic registration.
+bool DataLogger::autoWrite(std::int64_t timestampMs, const void* structPtr)
+{
+    clearError();
+
+    if (!initialized_)
+    {
+        setError(ErrorCode::InvalidConfig, "DataLogger must be initialized before automatic writes.");
+        return false;
+    }
+
+    if (autoRegisteredTables_.empty())
+    {
+        setError(ErrorCode::InvalidConfig, "Call autoRegisterTables() before autoWrite().");
+        return false;
+    }
+
+    for (TableHandle table : autoRegisteredTables_)
+    {
+        if (!write(table, timestampMs, structPtr))
+        {
+            return false;
+        }
     }
 
     return true;
@@ -356,5 +406,6 @@ void DataLogger::resetRuntimeState()
     schemaRegistry_ = SchemaRegistry{};
     tableNameToIndex_.clear();
     tableBuffers_.clear();
+    autoRegisteredTables_.clear();
 }
 }
