@@ -19,6 +19,8 @@ Phase 9 covers the testing checklist from `docs/05_IMPLEMENTATION_PLAN.md`:
 
 These checks do not require SQL Server and can be run automatically.
 
+Current project note: the Phase 9 harness now lives in `ExampleApp/test.cpp`, and the default executable builds `ExampleApp/main.cpp`. To repeat the historical `DataLogger.exe --phase9-tests` run, temporarily change the executable project source from `ExampleApp/main.cpp` to `ExampleApp/test.cpp`, rebuild, run the command below, then restore `ExampleApp/main.cpp` as the normal real-ODBC example entry point.
+
 1. Add an explicit Phase 9 validation mode to the example executable.
 2. Build the solution in `Debug|x64`.
 3. Run `x64\Debug\DataLogger.exe --phase9-tests`.
@@ -73,7 +75,7 @@ Build note:
 
 - The first Debug build after adding the harness failed because `ExampleApp/main.cpp` used schema loader and validator APIs without including their headers directly. The includes were added, then Debug and Release builds passed cleanly.
 - MSBuild still reports that `pwsh.exe` is not found for the vcpkg applocal step, then falls back to Windows PowerShell and succeeds.
-- Later project cleanup moved this harness source to `ExampleApp/test.cpp`; the default `ExampleApp/main.cpp` is now a minimal real-ODBC example app.
+- Later project cleanup moved this harness source to `ExampleApp/test.cpp`; the default `ExampleApp/main.cpp` is now a minimal real-ODBC example app. Repeat runs require temporarily compiling `ExampleApp/test.cpp` as the executable entry source.
 
 ### Database-gated checks
 

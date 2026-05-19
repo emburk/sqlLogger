@@ -8,9 +8,11 @@ This document lists the requirements for the DataLogger project. Each requiremen
 The project shall be implemented in modern C++ using C++17.
 
 ### REQ-002: IDE target
-The project shall include a Visual Studio 2019 solution file (`.sln`) and one Visual Studio C++ project file (`.vcxproj`) initially.
+The first implementation shall include a Visual Studio 2019 solution file (`.sln`) and one Visual Studio C++ project file (`.vcxproj`) initially.
 
 The source layout shall keep module boundaries clear so the project can later be split into multiple Visual Studio projects if needed.
+
+Current status: the repository still keeps the original monolithic solution and project, and also includes separate static-library projects and example solutions for C++ and C consumption.
 
 ### REQ-003: Platform target
 The primary build target shall be Windows x64.
@@ -253,7 +255,7 @@ The configuration shall include at least:
 - schema directory path;
 - batch size in rows;
 - existing-table policy;
-- optional SQL schema name, defaulting to `dbo`;
+- optional SQL Server schema name, defaulting to `dbo`;
 - optional info-printing flag, defaulting to enabled;
 - optional error-printing flag, defaulting to enabled.
 
@@ -365,6 +367,8 @@ After existing table handling, a fresh table shall be created for every schema f
 
 ### REQ-125: Schema-qualified tables
 The implementation shall support a SQL schema name, defaulting to `dbo`.
+
+`dbo` is the default SQL Server schema used to qualify generated table names, for example `[dbo].[imu_data]`. A caller may configure another schema name when the target database uses a different schema and the connection has permission to create tables and indexes there.
 
 ## 10. SQL table requirements
 

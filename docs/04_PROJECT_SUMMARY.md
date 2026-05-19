@@ -42,18 +42,25 @@ The main application:
 Example:
 
 ```cpp
-DataLoggerConfig config;
+#include "DataLogger/DataLogger.h"
+#include "SqlServerBackend/SqlServerOdbcBackend.h"
+
+#include <memory>
+
+DataLoggerCore::DataLoggerConfig config;
 config.connectionString = "Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=Telemetry;Trusted_Connection=yes;";
 config.schemaDirectory = "schemas";
+config.sqlSchemaName = "dbo";
 config.batchSizeRows = 100;
-config.existingTablePolicy = ExistingTablePolicy::RenameWithTimestampSuffix;
+config.existingTablePolicy = DataLoggerCore::ExistingTablePolicy::RenameWithTimestampSuffix;
 config.printInfoFlag = true;
 config.printErrorFlag = true;
 
-DataLogger logger;
+auto backend = std::make_unique<SqlServerBackend::SqlServerOdbcBackend>();
+DataLoggerCore::DataLogger logger(std::move(backend));
 logger.initialize(config);
 
-TableHandle imu = logger.registerTable("imu_data");
+DataLoggerCore::TableHandle imu = logger.registerTable("imu_data");
 
 ImuData data{};
 std::int64_t timestampMs = getCurrentUnixTimeMilliseconds();
@@ -61,6 +68,8 @@ std::int64_t timestampMs = getCurrentUnixTimeMilliseconds();
 logger.write(imu, timestampMs, &data);
 logger.flush();
 ```
+
+`dbo` is SQL Server's common default schema. The logger uses `DataLoggerConfig::sqlSchemaName` to generate schema-qualified table names such as `[dbo].[imu_data]`; callers can set another schema name when the target database and permissions require it.
 
 ## What the schema looks like
 
@@ -145,6 +154,18 @@ It:
 - rolls back failed batches;
 - reports ODBC diagnostics.
 
+## What the C facade does
+
+The C facade is an additive compatibility layer over the same C++ implementation.
+
+It:
+
+- exposes opaque logger and backend handles;
+- provides C-compatible configuration and table-handle structs;
+- returns integer success values;
+- copies the last error string into a caller-provided buffer;
+- lets C code create a SQL Server backend and pass it into the core logger.
+
 ## Why timestamp is required
 
 Grafana and SQL time-series queries need a time axis. Therefore every row has:
@@ -180,9 +201,9 @@ payload_attitude.csv
 payload_status.csv
 ```
 
-## First implementation target
+## Current project structure
 
-The first complete project should include:
+The current repository includes both the retained monolithic build and separate static-library consumption examples:
 
 ```text
 DataLoggerSolution.sln
@@ -190,46 +211,61 @@ DataLogger.vcxproj
 DataLoggerCore/
 SqlServerBackend/
 ExampleApp/
+ExampleAppLib/
+ExampleAppLibC/
+tools/
 docs/
 ```
 
-Suggested project structure:
+Important current files:
 
 ```text
-DataLoggerSolution.sln
-DataLogger.vcxproj
-
 DataLoggerCore/
   include/
-    DataLogger.h
-    DataLoggerConfig.h
-    TableHandle.h
-    Schema.h
-    SchemaLoaderCsv.h
-    Error.h
-    IDBBackend.h
+    DataLogger/
+      DataLogger.h
+      DataLoggerC.h
+      DataLoggerConfig.h
+      TableHandle.h
+      Schema.h
+      SchemaLoaderCsv.h
+      Error.h
+      IDBBackend.h
   src/
     DataLogger.cpp
+    DataLoggerC.cpp
     SchemaLoaderCsv.cpp
     SchemaValidator.cpp
     BinaryDecoder.cpp
+  DataLoggerCore.vcxproj
 
 SqlServerBackend/
   include/
-    SqlServerOdbcBackend.h
-    OdbcHandle.h
-    OdbcDiagnostics.h
+    SqlServerBackend/
+      SqlServerOdbcBackend.h
+      SqlServerOdbcBackendC.h
   src/
-    SqlServerOdbcBackend.cpp
-    OdbcDiagnostics.cpp
-    SqlTypeMapper.cpp
+    SqlServerBackend.cpp
+    SqlServerOdbcBackendC.cpp
+  SqlServerBackend.vcxproj
 
 ExampleApp/
   main.cpp
-  TelemetryStructs.h
+  test.cpp
   schemas/
     imu_data.csv
+
+ExampleAppLib/
+  ExampleAppLib.sln
+  ExampleAppLib.vcxproj
+
+ExampleAppLibC/
+  ExampleAppLibC.sln
+  ExampleAppLibC.vcxproj
+  main.c
 ```
+
+`ExampleApp/test.cpp` contains the historical smoke and Phase 9 validation harness. The normal projects compile `ExampleApp/main.cpp`; to repeat the old `DataLogger.exe --phase9-tests` run, temporarily switch the executable project source to `ExampleApp/test.cpp`, rebuild, run the test, and then restore `ExampleApp/main.cpp`.
 
 ## Success definition
 

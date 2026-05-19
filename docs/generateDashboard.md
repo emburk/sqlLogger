@@ -20,15 +20,19 @@ python tools\grafanaDropdownGenerator.py ExampleApp\local\schemas ExampleApp\loc
 ```
 
 - `--datasource-uid`: Grafana SQL Server datasource UID. Default is `MSSQL`.
+- `--database`: optional SQL Server database name to include in Grafana query metadata.
 - `--sql-schema`: SQL Server schema name. Default is `dbo`.
 - `--title`: dashboard title.
+- `--hide-variables`: place table variables in Grafana's controls menu. This is the default.
+- `--show-variables`: show table variables in the main Grafana variable bar.
 
 ## Output
 
 The generated JSON contains:
 
 - one dropdown variable per schema table;
-- one MSSQL time-series panel per schema table;
+- one MSSQL time-series panel named `Telemetry`;
+- one query target per schema table inside that panel;
 - queries ordered by `timestamp_ms`.
 
 Import `ExampleApp\local\grafana_dropdown_dashboard.json` through Grafana's dashboard import UI.
@@ -44,4 +48,4 @@ Import `ExampleApp\local\grafana_dropdown_dashboard.json` through Grafana's dash
 7. Select the SQL Server datasource if Grafana asks for one.
 8. Click **Import**.
 
-After import, use the dropdowns at the top of the dashboard to choose which column each table panel displays.
+After import, use each table dropdown to choose which payload column that table query displays. By default, variables are placed in Grafana's controls menu; pass `--show-variables` if they should appear in the main variable bar.

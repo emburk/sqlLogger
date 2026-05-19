@@ -283,6 +283,8 @@ Validation prevents injection and accidental invalid identifiers. Quoting protec
 ### Consequence
 Identifier validation is part of schema loading.
 
+Current implementation note: CSV-derived table names and payload column names are validated with the conservative identifier rule before SQL generation. `DataLoggerConfig::sqlSchemaName` defaults to `dbo`, is required to be non-empty, and is bracket-quoted by the backend when generating SQL. Treat configured schema names as trusted configuration values and keep them to normal SQL Server schema identifiers such as `dbo` or another pre-created schema name.
+
 ## DEC-023: Index timestamp column
 
 ### Decision
@@ -359,6 +361,8 @@ A single `.vcxproj` keeps the project easy to open, build, and debug without req
 
 ### Consequence
 `DataLoggerCore` and `SqlServerBackend` are source-level modules rather than separate static-library projects initially. The single project links `odbc32.lib` and builds one example executable. Once the project settles, the same folder boundaries can be split back into multiple Visual Studio projects/libraries inside the solution.
+
+Current status: this decision describes the initial implementation path. The repository now also contains `DataLoggerCore/DataLoggerCore.vcxproj`, `SqlServerBackend/SqlServerBackend.vcxproj`, `ExampleAppLib/ExampleAppLib.sln`, and `ExampleAppLibC/ExampleAppLibC.sln` for static-library consumption while retaining the original monolithic solution.
 
 ## DEC-030: Add configurable debug printing
 

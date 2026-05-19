@@ -200,6 +200,8 @@ struct DataLoggerConfig
 };
 ```
 
+`sqlSchemaName` is the SQL Server schema qualifier used in generated table names, for example `[dbo].[imu_data]`. The default `dbo` matches SQL Server's common default schema; callers can configure another schema when the target database uses one.
+
 ### ARCH-011: TableHandle
 Suggested handle type:
 
