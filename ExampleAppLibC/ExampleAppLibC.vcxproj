@@ -13,19 +13,19 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{2F7B67A1-1E0D-4D59-8F5E-1F9C3B75F611}</ProjectGuid>
-    <RootNamespace>DataLoggerCore</RootNamespace>
+    <ProjectGuid>{7D1BCB63-9F48-4427-AD34-2CD10204C5EC}</ProjectGuid>
+    <RootNamespace>ExampleAppLibC</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -33,47 +33,44 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <TargetName>DataLoggerCore</TargetName>
+    <TargetName>ExampleAppLibC</TargetName>
+    <LocalDebuggerWorkingDirectory>$(ProjectDir)..\</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <TargetName>DataLoggerCore</TargetName>
+    <TargetName>ExampleAppLibC</TargetName>
+    <LocalDebuggerWorkingDirectory>$(ProjectDir)..\</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <LanguageStandard>stdcpp17</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\DataLoggerCore\include;$(ProjectDir)..\SqlServerBackend\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <Link>
+      <AdditionalDependencies>odbc32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <LanguageStandard>stdcpp17</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\DataLoggerCore\include;$(ProjectDir)..\SqlServerBackend\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <Link>
+      <AdditionalDependencies>odbc32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\BinaryDecoder.cpp" />
-    <ClCompile Include="src\DataLogger.cpp" />
-    <ClCompile Include="src\DataLoggerC.cpp" />
-    <ClCompile Include="src\DataLoggerCore.cpp" />
-    <ClCompile Include="src\Schema.cpp" />
-    <ClCompile Include="src\SchemaLoaderCsv.cpp" />
-    <ClCompile Include="src\SchemaValidator.cpp" />
-    <ClCompile Include="src\TableHandle.cpp" />
+    <ClCompile Include="main.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\DataLogger\BinaryDecoder.h" />
-    <ClInclude Include="include\DataLogger\DataLogger.h" />
-    <ClInclude Include="include\DataLogger\DataLoggerC.h" />
-    <ClInclude Include="include\DataLogger\DataLoggerConfig.h" />
-    <ClInclude Include="include\DataLogger\Error.h" />
-    <ClInclude Include="include\DataLogger\IDBBackend.h" />
-    <ClInclude Include="include\DataLogger\Schema.h" />
-    <ClInclude Include="include\DataLogger\SchemaLoaderCsv.h" />
-    <ClInclude Include="include\DataLogger\SchemaValidator.h" />
-    <ClInclude Include="include\DataLogger\TableHandle.h" />
-    <ClInclude Include="include\DataLogger\detail\DataLoggerCBridge.h" />
+    <None Include="..\ExampleApp\schemas\imu_data.csv" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DataLoggerCore\DataLoggerCore.vcxproj">
+      <Project>{2f7b67a1-1e0d-4d59-8f5e-1f9c3b75f611}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\SqlServerBackend\SqlServerBackend.vcxproj">
+      <Project>{b49d7050-d37f-46b5-a944-74a26214bd78}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

@@ -523,3 +523,50 @@ Build the executable from `ExampleApp/main.cpp` so the monolithic and library-ba
 
 ### PLAN-1206: Preserve ODBC linkage
 Link the final executable against `odbc32.lib` while keeping database access inside the real SQL Server ODBC backend.
+
+## Phase 13: C compatibility API for static-library consumers
+
+This phase follows the approved Phase 13 design decisions in `docs/03_DESIGN_DECISIONS.md`.
+
+### PLAN-1301: Add core C public header
+Create a C-compatible `DataLoggerCore` public header that exposes only opaque logger/backend handles, `DataLoggerConfig_c`, `DataLoggerTableHandle_c`, and C-callable logger functions.
+
+The header must compile from a `.c` translation unit.
+
+### PLAN-1302: Add backend C public header
+Create a C-compatible `SqlServerBackend` public header that exposes a SQL Server backend factory and destroy function.
+
+The header must compile from a `.c` translation unit and must not expose ODBC or C++ implementation details.
+
+### PLAN-1303: Implement core C wrapper
+Add a C++ implementation file inside `DataLoggerCore` that translates C structs and opaque handles into the existing C++ `DataLogger` calls.
+
+The wrapper shall preserve backend injection and single-threaded behavior.
+
+### PLAN-1304: Implement backend C wrapper
+Add a C++ implementation file inside `SqlServerBackend` that constructs the concrete `SqlServerOdbcBackend` and returns it through the opaque backend handle expected by the core C wrapper.
+
+### PLAN-1305: Add C error retrieval
+Implement the approved error-string retrieval style for the C API.
+
+If caller-buffer retrieval is approved, support querying the required buffer size before copying.
+
+### PLAN-1306: Update static library projects
+Update `DataLoggerCore.vcxproj` and `SqlServerBackend.vcxproj` so the new C wrapper implementation files and public C headers are built and installed as part of the projects.
+
+### PLAN-1307: Preserve existing C++ examples
+Leave `ExampleAppLib` and the monolithic example on their existing C++ public API path.
+
+The C facade shall be added without replacing existing headers or changing current example behavior.
+
+### PLAN-1308: Add C library example solution
+Create `ExampleAppLibC/ExampleAppLibC.sln` and `ExampleAppLibC/ExampleAppLibC.vcxproj`.
+
+The executable shall compile a `.c` source file, include only the C facade headers for logger/backend access, reuse `ExampleApp/schemas/imu_data.csv`, and link against `DataLoggerCore`, `SqlServerBackend`, and `odbc32.lib`.
+
+### PLAN-1309: Build verification
+Verify that the existing projects still build in Release x64 after adding the C wrapper headers and sources.
+
+Verify that `ExampleAppLibC` builds in Release x64 and that its application source is compiled as C.
+
+If Debug is tested, ensure all static libraries and the executable use matching runtime settings.

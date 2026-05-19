@@ -12,9 +12,15 @@
     <ClCompile Include="src\SqlServerBackend.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\SqlServerOdbcBackendC.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\SqlServerBackend\SqlServerOdbcBackend.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SqlServerBackend\SqlServerOdbcBackendC.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

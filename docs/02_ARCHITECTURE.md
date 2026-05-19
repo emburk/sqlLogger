@@ -549,12 +549,75 @@ No schema, SQL, ODBC, or insertion error shall be silently ignored.
 ### ARCH-053: Initialization debug printing
 When `DataLoggerConfig::printInfoFlag` is enabled, initialization prints line-oriented success details only after the backend connection, table initialization, and insert preparation steps have all succeeded. When `printErrorFlag` is enabled, multi-part errors print with each backend or ODBC diagnostic detail on its own line.
 
-## 9. SQL Server wide-table risk
+## 9. C compatibility facade
 
-### ARCH-060: Why this matters
+### ARCH-070: Purpose
+The C compatibility facade exists so C applications can consume the static libraries without including C++ headers.
+
+It is a public ABI wrapper over the existing C++ classes, not a second logger implementation.
+
+### ARCH-071: Public C header boundaries
+`DataLoggerCore` should expose a C header for logger ownership, configuration, table handles, writes, flushes, shutdown, and error retrieval.
+
+`SqlServerBackend` should expose a C header for creating and destroying the concrete SQL Server backend handle.
+
+The C headers must include only C-compatible standard headers such as `<stddef.h>` and `<stdint.h>`.
+
+### ARCH-072: Opaque ownership model
+The proposed C model uses opaque handles:
+
+```c
+typedef struct DataLogger_c DataLogger_c;
+typedef struct DataLoggerBackend_c DataLoggerBackend_c;
+```
+
+The SQL Server backend factory creates a `DataLoggerBackend_c*`. The logger creation function takes ownership of that backend handle, mirroring C++ backend injection while preserving the existing dependency direction.
+
+### ARCH-073: Proposed C API shape
+The proposed API names are plain C functions rather than namespaced or method-style calls:
+
+```c
+DataLoggerBackend_c* sqlserver_backend_create_c(void);
+void sqlserver_backend_destroy_c(DataLoggerBackend_c* backend);
+
+DataLogger_c* datalogger_create_c(DataLoggerBackend_c* backend);
+void datalogger_destroy_c(DataLogger_c* logger);
+
+int datalogger_init_c(DataLogger_c* logger, const DataLoggerConfig_c* config);
+int datalogger_auto_register_tables_c(DataLogger_c* logger);
+DataLoggerTableHandle_c datalogger_register_table_c(DataLogger_c* logger, const char* tableName);
+int datalogger_auto_write_c(DataLogger_c* logger, int64_t timestampMs, const void* structPtr);
+int datalogger_write_c(DataLogger_c* logger, DataLoggerTableHandle_c table, int64_t timestampMs, const void* structPtr);
+int datalogger_flush_c(DataLogger_c* logger);
+int datalogger_flush_table_c(DataLogger_c* logger, DataLoggerTableHandle_c table);
+void datalogger_shutdown_c(DataLogger_c* logger);
+```
+
+These names are the approved C facade naming style for the initial implementation.
+
+### ARCH-074: Error string lifetime
+The C facade should not require C callers to free strings allocated by C++.
+
+The approved initial design copies the last error into a caller-provided buffer and returns the required byte count including the null terminator.
+
+Callers may pass `NULL, 0` to query the required size before allocating a buffer.
+
+### ARCH-075: C++ API preservation
+The C facade is additive. Existing C++ headers, examples, and project consumption paths continue to use the C++ API unless a later approved change updates them.
+
+The static libraries still build as C++ and keep the existing C++ implementation files.
+
+### ARCH-076: Separate C example
+`ExampleAppLibC` validates C consumption without changing the existing C++ examples.
+
+It links the same `DataLoggerCore` and `SqlServerBackend` static libraries, compiles its application entry point as C, and includes only the C facade headers for logger/backend access.
+
+## 10. SQL Server wide-table risk
+
+### ARCH-080: Why this matters
 The system can receive low-frequency data, around 10 Hz, but each struct can be large, up to around 16 KB. If the struct is flattened into many scalar SQL columns, SQL Server table-width and statement limits can become the dominant design constraint.
 
-### ARCH-061: Required validation
+### ARCH-081: Required validation
 The implementation must validate expanded table schemas before SQL generation.
 
 At minimum, check:
@@ -565,7 +628,7 @@ At minimum, check:
 - duplicate generated column names;
 - invalid SQL identifiers.
 
-### ARCH-062: If validation fails
+### ARCH-082: If validation fails
 If a schema is too wide, initialization must fail clearly. The recommended user action is to split one wide telemetry struct into multiple logical CSV/table schemas.
 
 Example split:

@@ -392,3 +392,103 @@ The monolithic project remains useful as the original simple open/build path. Th
 
 ### Consequence
 `DataLoggerCore` remains independent of `SqlServerBackend`. `SqlServerBackend` depends on `DataLoggerCore`, and the example executable links both libraries plus `odbc32.lib`.
+
+## Phase 13 decisions: C compatibility API
+
+The following decisions define the approved C compatibility API phase.
+
+## DEC-033: Add a C compatibility facade without replacing C++ internals
+
+### Decision
+Add C-callable headers and wrapper implementation files for library consumers that cannot include C++ headers.
+
+The C facade will wrap the existing C++ `DataLogger` and `SqlServerOdbcBackend` classes.
+
+### Reasoning
+The current public C++ headers expose `namespace`, classes, templates, `std::variant`, and other C++ constructs. C applications or mixed C/CSPICE applications cannot include those headers directly.
+
+### Consequence
+The project keeps the existing C++ implementation and adds a narrow ABI layer. C callers see only opaque handles, C structs, integer status values, and raw pointers.
+
+## DEC-034: Keep backend injection across the C API boundary
+
+### Decision
+Expose a C backend handle created by the SQL Server backend library, then pass that backend handle into a core logger creation function.
+
+Example shape:
+
+```c
+DataLoggerBackend_c* backend = sqlserver_backend_create_c();
+DataLogger_c* logger = datalogger_create_c(backend);
+```
+
+After successful logger creation, the logger owns the backend handle.
+
+### Reasoning
+This preserves the existing architecture where `DataLoggerCore` depends only on the backend interface and does not directly construct `SqlServerOdbcBackend`.
+
+### Consequence
+C callers need two headers: one from `DataLoggerCore` and one from `SqlServerBackend`. This avoids making the core static library depend on the concrete SQL Server backend.
+
+## DEC-035: Use explicit C function prefixes
+
+### Decision
+Use plain prefixed C function names such as `datalogger_init_c()` and `sqlserver_backend_create_c()`.
+
+### Reasoning
+C has no namespaces, methods, or overloads. Prefixes make symbol ownership clear and avoid collisions in larger C applications.
+
+### Consequence
+The user-facing API will be close to the requested `logger.init_c(...)` shape, but expressed as C functions that take an explicit logger handle.
+
+## DEC-036: Represent C table handles as a small value type
+
+### Decision
+Expose table handles as a C struct containing the underlying index and provide an invalid sentinel helper.
+
+Example shape:
+
+```c
+typedef struct DataLoggerTableHandle_c
+{
+    size_t index;
+} DataLoggerTableHandle_c;
+```
+
+### Reasoning
+This mirrors the C++ `TableHandle` wrapper while remaining C-compatible and easy to pass by value.
+
+### Consequence
+The C implementation must translate between `DataLoggerTableHandle_c` and the internal C++ `TableHandle`.
+
+## DEC-037: Prefer caller-buffer error retrieval
+
+### Decision
+Prefer an error retrieval function that copies the last error into a caller-provided buffer and returns the required byte count.
+
+Example shape:
+
+```c
+size_t datalogger_get_error_string_c(const DataLogger_c* logger,
+                                     char* buffer,
+                                     size_t bufferSize);
+```
+
+### Reasoning
+Caller-buffer copying avoids C callers freeing C++ memory and avoids exposing string lifetime rules that can be easy to misuse.
+
+### Consequence
+Callers can pass `NULL, 0` to query the required size, then allocate their own buffer if needed. A simpler `const char*` API remains possible if approved instead.
+
+## DEC-038: Keep existing C++ examples and add a separate C facade example
+
+### Decision
+Keep the existing `ExampleApp` and `ExampleAppLib` C++ examples unchanged while adding C-callable headers and wrappers beside the current C++ public API.
+
+Add a separate `ExampleAppLibC` solution/project to validate C application consumption through the C facade.
+
+### Reasoning
+The immediate goal is to make C applications able to consume the libraries without breaking or replacing the current C++ examples and include paths. A separate C example proves the facade works from a `.c` translation unit while preserving the existing C++ validation path.
+
+### Consequence
+The existing library example continues to validate the C++ static-library consumption path. `ExampleAppLibC` validates the C static-library consumption path.

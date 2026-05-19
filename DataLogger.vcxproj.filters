@@ -22,6 +22,9 @@
     <ClCompile Include="DataLoggerCore\src\DataLogger.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
+    <ClCompile Include="DataLoggerCore\src\DataLoggerC.cpp">
+      <Filter>DataLoggerCore</Filter>
+    </ClCompile>
     <ClCompile Include="DataLoggerCore\src\DataLoggerCore.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
@@ -40,6 +43,9 @@
     <ClCompile Include="SqlServerBackend\src\SqlServerBackend.cpp">
       <Filter>SqlServerBackend</Filter>
     </ClCompile>
+    <ClCompile Include="SqlServerBackend\src\SqlServerOdbcBackendC.cpp">
+      <Filter>SqlServerBackend</Filter>
+    </ClCompile>
     <ClCompile Include="ExampleApp\main.cpp">
       <Filter>ExampleApp</Filter>
     </ClCompile>
@@ -51,7 +57,13 @@
     <ClInclude Include="DataLoggerCore\include\DataLogger\DataLogger.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
+    <ClInclude Include="DataLoggerCore\include\DataLogger\DataLoggerC.h">
+      <Filter>DataLoggerCore</Filter>
+    </ClInclude>
     <ClInclude Include="DataLoggerCore\include\DataLogger\DataLoggerConfig.h">
+      <Filter>DataLoggerCore</Filter>
+    </ClInclude>
+    <ClInclude Include="DataLoggerCore\include\DataLogger\detail\DataLoggerCBridge.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
     <ClInclude Include="DataLoggerCore\include\DataLogger\Error.h">
@@ -73,6 +85,9 @@
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
     <ClInclude Include="SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackend.h">
+      <Filter>SqlServerBackend</Filter>
+    </ClInclude>
+    <ClInclude Include="SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackendC.h">
       <Filter>SqlServerBackend</Filter>
     </ClInclude>
   </ItemGroup>

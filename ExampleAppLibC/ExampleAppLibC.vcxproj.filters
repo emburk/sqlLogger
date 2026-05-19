@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="ExampleAppLibC">
+      <UniqueIdentifier>{77D1D2A5-EC80-4243-AB42-F4E674C45D1C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ExampleApp\Schemas">
+      <UniqueIdentifier>{2E935147-1B01-4B7A-8DF1-379FC8F5B58A}</UniqueIdentifier>
+      <Extensions>csv</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.c">
+      <Filter>ExampleAppLibC</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\ExampleApp\schemas\imu_data.csv">
+      <Filter>ExampleApp\Schemas</Filter>
+    </None>
+  </ItemGroup>
+</Project>

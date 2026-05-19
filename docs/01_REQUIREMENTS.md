@@ -451,3 +451,53 @@ DLL/plugin-style backend loading is not required initially.
 
 ### REQ-205: No row ID initially
 A separate row ID or sequence column is not required initially.
+
+## 13. C compatibility API requirements
+
+### REQ-210: C-callable public headers
+The static-library consumption path shall provide C-callable public headers for `DataLoggerCore` and `SqlServerBackend`.
+
+These headers shall be usable from `.c` translation units and shall not expose C++ namespaces, classes, templates, `std::string`, `std::vector`, `std::variant`, references, exceptions, or overloads.
+
+### REQ-211: Preserve C++ implementation ownership
+The C API shall be a compatibility layer over the existing C++ implementation. It shall not replace the internal C++ `DataLogger`, `IDBBackend`, or `SqlServerOdbcBackend` architecture.
+
+### REQ-212: Opaque C handles
+The C API shall expose logger and backend instances through opaque pointer handles so C callers do not depend on C++ object layout.
+
+### REQ-213: C configuration type
+The C API shall provide a `DataLoggerConfig_c` type using C-compatible fields:
+
+- `const char* connectionString`;
+- `const char* schemaDirectory`;
+- `const char* sqlSchemaName`;
+- `size_t batchSizeRows`;
+- C enum value for existing-table policy;
+- integer flags for info and error printing.
+
+### REQ-214: C table handle type
+The C API shall provide a C-compatible table handle type. It shall allow an invalid sentinel and shall be accepted by C write and flush functions.
+
+### REQ-215: C return values
+C API functions shall return integer success values, where `1` means success and `0` means failure, unless a function naturally returns a handle.
+
+### REQ-216: C error retrieval
+The C API shall provide a way to retrieve the last logger error as a readable C string without transferring ownership of C++ memory to the caller.
+
+The exact retrieval style is a design decision for approval before implementation.
+
+### REQ-217: C automatic registration and write
+The C API shall support initialization, automatic table registration, manual table registration, handle-based write, automatic multi-table write, all-table flush, per-table flush, shutdown, and destruction.
+
+### REQ-218: C API remains single-threaded
+The C API shall follow the same single-threaded design as the C++ API and shall not add locks, worker threads, async behavior, or background flushing.
+
+### REQ-219: Preserve existing C++ public API and examples
+The C-callable headers shall be added alongside the existing C++ headers and shall not replace them.
+
+Existing C++ examples, including `ExampleAppLib`, shall remain unaffected unless a later approved phase explicitly changes them.
+
+### REQ-220: Add C static-library example
+The project shall include a separate `ExampleAppLibC` Visual Studio solution and executable project that consumes `DataLoggerCore` and `SqlServerBackend` through only the C public headers.
+
+This example shall reuse the existing CSV schema files and shall not replace or alter the existing C++ examples.

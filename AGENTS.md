@@ -14,6 +14,7 @@ Schema-driven telemetry DataLogger for SQL Server.
 - CSV schema files only
 - Maintain readability over optimization
 - Do not redesign architecture without approval (do not make high level assumptions, ask first)
+- Ask for permission each time "git -c .." command is necessary
 
 
 ## Important Docs

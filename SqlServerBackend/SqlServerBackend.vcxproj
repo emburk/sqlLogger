@@ -54,9 +54,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\SqlServerBackend.cpp" />
+    <ClCompile Include="src\SqlServerOdbcBackendC.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\SqlServerBackend\SqlServerOdbcBackend.h" />
+    <ClInclude Include="include\SqlServerBackend\SqlServerOdbcBackendC.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DataLoggerCore\DataLoggerCore.vcxproj">
