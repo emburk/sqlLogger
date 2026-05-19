@@ -391,9 +391,15 @@ void DataLogger::printInitializationSuccess() const
 
     std::cout << "DataLogger initialization succeeded:" << '\n'
               << "Database backend: connected" << '\n'
-              << "SQL schema: [" << config_.sqlSchemaName << "]" << '\n'
-              << "Tables initialized: " << schemaRegistry_.tables.size() << '\n'
-              << "Existing-table policy: " << existingTablePolicyName(config_.existingTablePolicy) << '\n'
+              << "SQL schema: [" << config_.sqlSchemaName << "]" << '\n';
+
+    std::cout << "Tables initialized:" << '\n';
+    for (const TableSchema& table : schemaRegistry_.tables)
+    {
+        std::cout << "  [" << config_.sqlSchemaName << "].[" << table.tableName << "]" << '\n';
+    }
+
+    std::cout << "Existing-table policy: " << existingTablePolicyName(config_.existingTablePolicy) << '\n'
               << "Insert statements: prepared" << '\n'
               << "Batch size rows: " << config_.batchSizeRows << '\n';
 }
