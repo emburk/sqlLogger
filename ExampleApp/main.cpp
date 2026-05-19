@@ -1,16 +1,20 @@
 #include "DataLogger/DataLogger.h"
 #include "SqlServerBackend/SqlServerOdbcBackend.h"
 
+#include <conio.h>
+#include <cstdio>
 #include <cstdlib>
 #include <cstdint>
 #include <iostream>
+#include <io.h>
 #include <memory>
 #include <string>
 
+// Include the large local payload only for explicit local stress runs.
+#define LOCAL_TEST
 #ifdef LOCAL_TEST
-// Include the large local AO payload only for explicit local stress runs.
-#include "local/aoMain_types.h"
-#include "local/aoInitialize.c"
+#include "local/payload_types.h"
+#include "local/payloadInitialize.c"
 #endif
 
 namespace
@@ -52,15 +56,34 @@ std::string readConnectionString()
     return connectionString;
 }
 
+// Pause failed interactive runs so Visual Studio-launched consoles stay readable.
+void waitForKeyPress()
+{
+    if (_isatty(_fileno(stdin)) == 0)
+    {
+        return;
+    }
+
+    std::cerr << "Press any key to exit..." << '\n';
+    (void)_getch();
+}
+
+// Return the standard example failure code after the optional diagnostic pause.
+int failAfterKeyPress()
+{
+    waitForKeyPress();
+    return 1;
+}
+
 #ifdef LOCAL_TEST
 // Write the same AO payload to every split table for a deterministic load test.
 bool writeAoRows(DataLoggerCore::DataLogger& logger,
-                 const aoMainStruct_T& ao)
+                 const payloadStruct_T& pl)
 {
     for (int iteration = 0; iteration < kWriteIterations; ++iteration)
     {
         const std::int64_t timestampMs = kBaseTimestampMs + iteration;
-        if (!logger.autoWrite(timestampMs, &ao))
+        if (!logger.autoWrite(timestampMs, &pl))
         {
             return false;
         }
@@ -100,15 +123,15 @@ bool writeSimpleSensorRows(DataLoggerCore::DataLogger& logger,
 int main()
 {
 #ifdef LOCAL_TEST
-    aoMainStruct_T ao;
-    aoMain_initalizeStruct(&ao);
+    payloadStruct_T ao;
+    payload_initalizeStruct(&ao);
 #endif
 
     const std::string connectionString = readConnectionString();
     if (connectionString.empty())
     {
         std::cerr << "Set SQLLOGGER_CONNECTION_STRING before running the example.\n";
-        return 1;
+        return failAfterKeyPress();
     }
 
     DataLoggerCore::DataLoggerConfig config;
@@ -125,37 +148,38 @@ int main()
     DataLoggerCore::DataLogger logger(std::move(backend));
     if (!logger.initialize(config))
     {
-        return 1;
+        return failAfterKeyPress();
     }
 
 #ifdef LOCAL_TEST
     if (!logger.autoRegisterTables())
     {
-        return 1;
+        return failAfterKeyPress();
     }
 
     if (!writeAoRows(logger, ao) || !logger.flush())
     {
-        return 1;
+        return failAfterKeyPress();
     }
 
     logger.shutdown();
-    std::cout << "Inserted AO test rows for " << kWriteIterations << " iterations.\n";
+    std::cout << "Inserted PL test rows for " << kWriteIterations << " iterations.\n";
 #else
     const DataLoggerCore::TableHandle imu = logger.registerTable("imu_data");
     if (!imu.isValid())
     {
-        return 1;
+        return failAfterKeyPress();
     }
 
     const ImuData sample = makeSimpleSensorData();
     if (!writeSimpleSensorRows(logger, imu, sample) || !logger.flush())
     {
-        return 1;
+        return failAfterKeyPress();
     }
 
     logger.shutdown();
     std::cout << "Inserted simple sensor rows into imu_data.\n";
+    waitForKeyPress();
 #endif
     return 0;
 }
