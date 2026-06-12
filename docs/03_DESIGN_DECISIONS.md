@@ -115,6 +115,11 @@ Flattened scalar columns are simple, SQL Server-compatible, and Grafana-friendly
 ### Consequence
 Very large arrays may create wide SQL tables and must be validated against SQL Server limits.
 
+Current helper-tool note: `tools/schemaGenerator.py` also expands array-typed
+struct rows from exported layout CSV files before producing DataLogger schema
+CSV. Numeric descendants of a struct array receive the struct element index in
+their generated column path, and nested struct arrays are expanded recursively.
+
 ## DEC-009: Numeric-only initial implementation
 
 ### Decision

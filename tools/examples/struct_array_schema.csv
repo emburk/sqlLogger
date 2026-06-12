@@ -1,0 +1,11 @@
+column_name,offset,datatype,size,length
+a_b_0_c,0,double,8,1
+a_b_0_d,8,double,8,1
+a_b_0_inner_0_x,16,uint32,4,1
+a_b_0_inner_1_x,24,uint32,4,1
+a_b_1_c,40,double,8,1
+a_b_1_d,48,double,8,1
+a_b_1_inner_0_x,56,uint32,4,1
+a_b_1_inner_1_x,64,uint32,4,1
+a_e_0,80,uint16,2,1
+a_e_1,82,uint16,2,1

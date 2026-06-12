@@ -267,6 +267,14 @@ ExampleAppLibC/
 
 `ExampleApp/test.cpp` contains the historical smoke and Phase 9 validation harness. The normal projects compile `ExampleApp/main.cpp`; to repeat the old `DataLogger.exe --phase9-tests` run, temporarily switch the executable project source to `ExampleApp/test.cpp`, rebuild, run the test, and then restore `ExampleApp/main.cpp`.
 
+## Tooling note
+
+`tools/schemaGenerator.py` converts exported struct layout CSV files into
+DataLogger schema CSV files. When an exported row describes an array of structs,
+the generator clones numeric descendants for each struct element and inserts
+the element index into the generated column name. This also applies recursively
+to nested struct arrays.
+
 ## Success definition
 
 The project is successful when:

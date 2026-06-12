@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a DataLogger CSV schema from an exported C/C++ struct layout CSV.
+r"""Generate a DataLogger CSV schema from an exported C/C++ struct layout CSV.
 
 Objective:
     Convert numeric fields from a compiler/exported struct layout into one or
@@ -7,9 +7,13 @@ Objective:
 
 Input CSV format:
     field_name, offset, byteSize, lengthDim1, lengthDim2, classname
+    For struct arrays, byteSize is the total array byte span.
 
 Output CSV format:
     column_name,offset,datatype,size,length
+
+Usage example:
+    python tools\schemaGenerator.py ExampleApp\local\structLayout.csv ExampleApp\local\schemas\ao_main.csv --mode 3
 
 Modes:
     0: Default. Expand every element into a scalar output row, length=1.
@@ -53,6 +57,17 @@ class SchemaRow:
     size: int
     length: int
     struct_group: str
+
+
+@dataclass(frozen=True)
+class LayoutRow:
+    """Store one normalized source layout row with parsed numeric fields."""
+    field_name: str
+    offset: int
+    byte_size: int
+    length: int
+    class_name: str
+    line_number: int
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -129,6 +144,170 @@ def parse_positive_int(row: dict[str, str], field_name: str, line_number: int) -
     return value
 
 
+def parse_required_int(row: dict[str, str], field_name: str, line_number: int) -> int:
+    """Parse a required integer field from a normalized CSV row."""
+    try:
+        return int(row.get(field_name, ""))
+    except ValueError as exc:
+        raise ValueError(
+            f"line {line_number}: invalid {field_name} '{row.get(field_name, '')}'"
+        ) from exc
+
+
+def parse_layout_rows(input_path: Path) -> list[LayoutRow]:
+    """Read structLayout.csv rows and parse the fields needed for expansion."""
+    layout_rows: list[LayoutRow] = []
+
+    with input_path.open(newline="") as source:
+        reader = csv.DictReader(source)
+        for line_number, raw_row in enumerate(reader, start=2):
+            row = normalized_row(raw_row)
+            length_dim1 = parse_positive_int(row, "lengthDim1", line_number)
+            length_dim2 = parse_positive_int(row, "lengthDim2", line_number)
+            layout_rows.append(
+                LayoutRow(
+                    field_name=row.get("field_name", ""),
+                    offset=parse_required_int(row, "offset", line_number),
+                    byte_size=parse_positive_int(row, "byteSize", line_number),
+                    length=length_dim1 * length_dim2,
+                    class_name=row.get("classname", ""),
+                    line_number=line_number,
+                )
+            )
+
+    return layout_rows
+
+
+def indexed_field_name(field_name: str, indexed_structs: dict[str, int]) -> str:
+    """Insert struct-array indexes into a dotted source field path."""
+    output_parts: list[str] = []
+    current_path: list[str] = []
+
+    for part in field_name.split("."):
+        current_path.append(part)
+        output_parts.append(part)
+
+        path = ".".join(current_path)
+        if path in indexed_structs:
+            output_parts.append(str(indexed_structs[path]))
+
+    return ".".join(output_parts)
+
+
+def nearest_struct_parent(row: LayoutRow, struct_names: set[str]) -> str | None:
+    """Find the nearest declared struct parent for one source layout row."""
+    parts = row.field_name.split(".")
+    for count in range(len(parts) - 1, 0, -1):
+        candidate = ".".join(parts[:count])
+        if candidate in struct_names:
+            return candidate
+
+    return None
+
+
+def struct_element_stride(row: LayoutRow) -> int:
+    """Return the per-element byte stride for a struct layout row."""
+    if row.length == 1:
+        return row.byte_size
+
+    if row.byte_size % row.length != 0:
+        raise ValueError(
+            f"line {row.line_number}: struct byteSize {row.byte_size} "
+            f"must divide evenly by length {row.length}"
+        )
+
+    return row.byte_size // row.length
+
+
+def build_layout_tree(rows: list[LayoutRow]) -> tuple[list[LayoutRow], dict[str, list[LayoutRow]]]:
+    """Build a source-order tree from dotted field paths and struct rows."""
+    struct_names = {
+        row.field_name
+        for row in rows
+        if row.class_name == "struct"
+    }
+    roots: list[LayoutRow] = []
+    children: dict[str, list[LayoutRow]] = {}
+
+    for row in rows:
+        parent = nearest_struct_parent(row, struct_names)
+        if parent is None:
+            roots.append(row)
+        else:
+            children.setdefault(parent, []).append(row)
+
+    return roots, children
+
+
+def append_schema_rows_from_layout(
+    row: LayoutRow,
+    children: dict[str, list[LayoutRow]],
+    indexed_structs: dict[str, int],
+    offset_delta: int,
+    generated_rows: list[SchemaRow],
+    seen_names: set[str],
+) -> None:
+    """Append schema rows by recursively walking expanded struct-array elements."""
+    if row.class_name == "struct":
+        if row.length > 1:
+            stride = struct_element_stride(row)
+            for index in range(row.length):
+                next_indexed_structs = dict(indexed_structs)
+                next_indexed_structs[row.field_name] = index
+                next_offset_delta = offset_delta + index * stride
+                for child in children.get(row.field_name, []):
+                    append_schema_rows_from_layout(
+                        child,
+                        children,
+                        next_indexed_structs,
+                        next_offset_delta,
+                        generated_rows,
+                        seen_names,
+                    )
+            return
+
+        for child in children.get(row.field_name, []):
+            append_schema_rows_from_layout(
+                child,
+                children,
+                indexed_structs,
+                offset_delta,
+                generated_rows,
+                seen_names,
+            )
+        return
+
+    if row.class_name not in TYPE_MAP:
+        raise ValueError(
+            f"line {row.line_number}: unsupported classname '{row.class_name}'"
+        )
+
+    datatype, size = TYPE_MAP[row.class_name]
+    if row.byte_size != size * row.length:
+        print(
+            f"warning: line {row.line_number}: byteSize {row.byte_size} "
+            f"differs from datatype size {size} * length {row.length}.",
+            file=sys.stderr,
+        )
+
+    column_name = make_column_name(indexed_field_name(row.field_name, indexed_structs))
+    if column_name in seen_names:
+        raise ValueError(
+            f"line {row.line_number}: duplicate generated column '{column_name}'"
+        )
+    seen_names.add(column_name)
+    generated_rows.append(
+        SchemaRow(
+            column_name=column_name,
+            offset=row.offset + offset_delta,
+            datatype=datatype,
+            size=size,
+            length=row.length,
+            struct_group=make_struct_group(row.field_name),
+        )
+    )
+
+
 def element_count(rows: list[SchemaRow]) -> int:
     """Count expanded payload elements represented by schema rows."""
     return sum(row.length for row in rows)
@@ -149,53 +328,11 @@ def generate_schema_rows(input_path: Path) -> list[SchemaRow]:
     """Read structLayout.csv and return DataLogger schema rows with array lengths."""
     generated_rows: list[SchemaRow] = []
     seen_names: set[str] = set()
+    layout_rows = parse_layout_rows(input_path)
+    roots, children = build_layout_tree(layout_rows)
 
-    with input_path.open(newline="") as source:
-        reader = csv.DictReader(source)
-        for line_number, raw_row in enumerate(reader, start=2):
-            row = normalized_row(raw_row)
-            class_name = row.get("classname", "")
-
-            # Struct rows only describe nesting; DataLogger schema rows are scalar payload fields.
-            if class_name == "struct":
-                continue
-            if class_name not in TYPE_MAP:
-                raise ValueError(
-                    f"line {line_number}: unsupported classname '{class_name}'"
-                )
-
-            # Column names must be unique after field path normalization.
-            column_name = make_column_name(row.get("field_name", ""))
-            if column_name in seen_names:
-                raise ValueError(
-                    f"line {line_number}: duplicate generated column '{column_name}'"
-                )
-            seen_names.add(column_name)
-
-            # The layout offset is the first element; DataLogger expands arrays from size and length.
-            try:
-                offset = str(int(row.get("offset", "")))
-            except ValueError as exc:
-                raise ValueError(
-                    f"line {line_number}: invalid offset '{row.get('offset', '')}'"
-                ) from exc
-
-            # The exporter stores array shape as two dimensions; DataLogger needs total element count.
-            length_dim1 = parse_positive_int(row, "lengthDim1", line_number)
-            length_dim2 = parse_positive_int(row, "lengthDim2", line_number)
-            length = length_dim1 * length_dim2
-
-            datatype, size = TYPE_MAP[class_name]
-            generated_rows.append(
-                SchemaRow(
-                    column_name=column_name,
-                    offset=int(offset),
-                    datatype=datatype,
-                    size=size,
-                    length=length,
-                    struct_group=make_struct_group(row.get("field_name", "")),
-                )
-            )
+    for root in roots:
+        append_schema_rows_from_layout(root, children, {}, 0, generated_rows, seen_names)
 
     return generated_rows
 

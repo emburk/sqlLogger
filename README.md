@@ -82,6 +82,23 @@ status,40,uint16,2,1,,status code
 
 Arrays are flattened into SQL columns such as `gyro_0`, `gyro_1`, and `gyro_2`. The logger automatically prepends `timestamp_ms BIGINT NOT NULL`; timestamps are supplied by the application and are not listed in the CSV.
 
+## Schema Generator
+
+`tools/schemaGenerator.py` converts exported struct layout CSV files with this input shape:
+
+```csv
+field_name, offset, byteSize, lengthDim1, lengthDim2, classname
+```
+
+The generator preserves the DataLogger CSV contract and expands array-typed struct parents before writing schema rows. For example, a source field path below `a.b` where `a.b` is a struct array becomes columns such as `a_b_0_c`, `a_b_0_d`, through `a_b_19_c`, `a_b_19_d`. Nested struct arrays are expanded recursively.
+For struct-array rows, `byteSize` is treated as the total array byte span, so element offsets use `byteSize / (lengthDim1 * lengthDim2)` as the stride.
+
+Example:
+
+```powershell
+python tools\schemaGenerator.py tools\examples\struct_array_layout.csv tools\examples\struct_array_schema.csv --mode 0
+```
+
 ## Grafana Query Example
 
 ```sql

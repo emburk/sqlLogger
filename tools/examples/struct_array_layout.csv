@@ -1,0 +1,8 @@
+field_name, offset, byteSize, lengthDim1, lengthDim2, classname
+a, 0, 96, 1, 1, struct
+a.b, 0, 80, 2, 1, struct
+a.b.c, 0, 8, 1, 1, double
+a.b.d, 8, 8, 1, 1, double
+a.b.inner, 16, 16, 2, 1, struct
+a.b.inner.x, 16, 4, 1, 1, uint32
+a.e, 80, 4, 2, 1, uint16
