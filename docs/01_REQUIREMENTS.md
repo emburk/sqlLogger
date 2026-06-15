@@ -292,6 +292,8 @@ The API shall provide a method to flush all table buffers.
 ### REQ-098: Single-threaded use
 The API shall be designed for single-threaded use and does not need internal locks.
 
+Current async-refactor exception: `DataLoggerCore` and `SqlServerBackend` remain single-threaded. Threading and asynchronous producer/worker behavior may exist only in an outer shell such as `AsyncLogger`, where the worker owns calls into the synchronous logger.
+
 ### REQ-099: No production wall-clock dependency
 Production logger code shall not read wall-clock time. Example or test code may use wall-clock time only to produce caller-supplied timestamps.
 
@@ -328,6 +330,8 @@ Flush interval configuration is not required initially.
 
 ### REQ-114: No background thread
 No background flushing thread shall be used initially.
+
+Current async-refactor exception: `AsyncLogger` may add one outer worker thread so real-time callers enqueue preallocated payload copies while SQL/decode/flush work stays off the caller thread. The core logger and backend do not become generally thread-safe.
 
 ### REQ-115: Flush on shutdown
 `DataLogger` shall attempt to flush remaining buffers during explicit shutdown or destruction, but the preferred API is explicit `flush()` before shutdown.
@@ -443,6 +447,8 @@ Runtime schema reload is not required.
 
 ### REQ-201: No multithreading initially
 Thread-safe ingestion and worker threads are not required initially.
+
+Current async-refactor exception: the real-time safety wrapper may use an outer SPSC queue and one worker thread. This does not change the single-threaded contract of `DataLoggerCore` or `SqlServerBackend`.
 
 ### REQ-202: No JSON schema
 JSON schema support is not required.

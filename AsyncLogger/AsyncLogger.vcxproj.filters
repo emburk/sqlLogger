@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{93195E4A-232B-4F52-95F0-7B96AE571080}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{5AF23B35-5960-4E15-8D2A-30C752B00C6B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="DataLoggerCore Sources">
+      <UniqueIdentifier>{9ED8AC25-8FE0-4B3F-9488-85C355E7933C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SqlServerBackend Sources">
+      <UniqueIdentifier>{4F7FCF91-03C5-4326-8E3F-ED5765B62557}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\DataLoggerCore\src\BinaryDecoder.cpp">
+      <Filter>DataLoggerCore Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DataLoggerCore\src\DataLogger.cpp">
+      <Filter>DataLoggerCore Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DataLoggerCore\src\DataLoggerC.cpp">
+      <Filter>DataLoggerCore Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DataLoggerCore\src\DataLoggerCore.cpp">
+      <Filter>DataLoggerCore Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DataLoggerCore\src\Schema.cpp">
+      <Filter>DataLoggerCore Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DataLoggerCore\src\SchemaLoaderCsv.cpp">
+      <Filter>DataLoggerCore Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DataLoggerCore\src\SchemaValidator.cpp">
+      <Filter>DataLoggerCore Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DataLoggerCore\src\TableHandle.cpp">
+      <Filter>DataLoggerCore Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SqlServerBackend\src\SqlServerBackend.cpp">
+      <Filter>SqlServerBackend Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SqlServerBackend\src\SqlServerOdbcBackendC.cpp">
+      <Filter>SqlServerBackend Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AsyncDataLogger.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SqlLoggerC.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\AsyncLogger\AsyncDataLogger.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AsyncLogger\SqlLoggerC.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

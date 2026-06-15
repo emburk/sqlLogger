@@ -194,6 +194,8 @@ The expected data frequency is around 10 Hz, and readability/maintainability is 
 ### Consequence
 The production logger remains deterministic and does not depend on wall-clock time. Example/test code may use wall-clock time only to produce caller-supplied timestamps.
 
+Current async-refactor exception: asynchronous work is allowed only in an outer shell such as `AsyncLogger`. `DataLoggerCore` and `SqlServerBackend` remain single-threaded unless a later design decision explicitly approves otherwise.
+
 ## DEC-015: Real ODBC backend
 
 ### Decision

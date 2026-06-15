@@ -1,0 +1,5 @@
+column_name,offset,datatype,size,length,unit,description
+gyro,8,float,4,3,rad/s,body angular rate
+accel,20,float,4,3,m/s2,body acceleration
+temperature,32,double,8,1,degC,electronics temperature
+status,40,uint16,2,1,,status code

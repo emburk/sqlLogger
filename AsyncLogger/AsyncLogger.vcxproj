@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{A0C16A4B-2AA0-4B8C-B44D-4C4D92B83D50}</ProjectGuid>
+    <RootNamespace>AsyncLogger</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetName>AsyncLogger</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetName>AsyncLogger</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <WarningLevel>Level4</WarningLevel>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\DataLoggerCore\include;$(ProjectDir)..\SqlServerBackend\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <WarningLevel>Level4</WarningLevel>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\DataLoggerCore\include;$(ProjectDir)..\SqlServerBackend\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\DataLoggerCore\src\BinaryDecoder.cpp" />
+    <ClCompile Include="..\DataLoggerCore\src\DataLogger.cpp" />
+    <ClCompile Include="..\DataLoggerCore\src\DataLoggerC.cpp" />
+    <ClCompile Include="..\DataLoggerCore\src\DataLoggerCore.cpp" />
+    <ClCompile Include="..\DataLoggerCore\src\Schema.cpp" />
+    <ClCompile Include="..\DataLoggerCore\src\SchemaLoaderCsv.cpp" />
+    <ClCompile Include="..\DataLoggerCore\src\SchemaValidator.cpp" />
+    <ClCompile Include="..\DataLoggerCore\src\TableHandle.cpp" />
+    <ClCompile Include="..\SqlServerBackend\src\SqlServerBackend.cpp" />
+    <ClCompile Include="..\SqlServerBackend\src\SqlServerOdbcBackendC.cpp" />
+    <ClCompile Include="src\AsyncDataLogger.cpp" />
+    <ClCompile Include="src\SqlLoggerC.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\AsyncLogger\AsyncDataLogger.h" />
+    <ClInclude Include="include\AsyncLogger\SqlLoggerC.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

@@ -6,6 +6,8 @@ This document describes the architecture of the DataLogger project.
 
 The DataLogger is a schema-driven telemetry ingestion system. It decodes fixed-layout C/C++ structs using external CSV schemas, buffers rows per table, and writes batches to Microsoft SQL Server using a real ODBC backend.
 
+Current async-refactor boundary: `DataLoggerCore` and `SqlServerBackend` remain single-threaded. `AsyncLogger` is an outer shell that may own one worker thread and a preallocated SPSC queue so SQL, ODBC, decode, and flush work do not run on the real-time producer thread.
+
 ```text
 +----------------------+       +---------------------------+
 | Main Application     |       | schemas/*.csv             |
@@ -163,6 +165,8 @@ logger.autoWrite(timestampMs, &payloadStruct);
 Production logger code does not read wall-clock time. The application supplies `timestampMs` for storage, and example/test code may use wall clock only to produce those caller-supplied timestamps.
 
 Pending buffers are flushed automatically by batch size or manually through `flush()`.
+
+When the optional `AsyncLogger` outer shell is used, producer calls enqueue bounded payload copies. The async worker is the only thread that calls the wrapped `DataLogger::write`, `DataLogger::autoWrite`, and `DataLogger::flush` after the worker starts.
 
 ### 3.5 Manual flush flow
 

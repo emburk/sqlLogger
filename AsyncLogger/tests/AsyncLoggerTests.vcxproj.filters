@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{959FB3CB-B683-495A-A550-D1E93699A214}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Schema Files">
+      <UniqueIdentifier>{130789C2-A1A5-451D-8BBF-97F86D1A28CE}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="schemas\async_phase1_smoke.csv">
+      <Filter>Schema Files</Filter>
+    </None>
+  </ItemGroup>
+</Project>
