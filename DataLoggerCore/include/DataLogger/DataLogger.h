@@ -55,7 +55,7 @@ private:
     {
         TableHandle handle;
         const TableSchema* schema = nullptr;
-        std::vector<DecodedRow> rows;
+        ColumnBatch batch;
     };
 
     // Clear the last public-operation error.

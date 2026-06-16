@@ -15,44 +15,55 @@ T readValue(const void* base, std::size_t offset)
     return value;
 }
 
-// Convert one expanded schema column into the matching numeric variant value.
-FieldValue decodeField(const void* base, const ExpandedColumnSchema& column)
+// Store one decoded payload value into the matching typed column vector.
+void decodeFieldIntoColumn(const void* base,
+                           const ExpandedColumnSchema& column,
+                           ColumnStorage& storage,
+                           std::size_t rowIndex)
 {
     switch (column.datatype)
     {
     case DataType::Int8:
-        return readValue<std::int8_t>(base, column.offset);
+        storage.int16Values[rowIndex] = static_cast<std::int16_t>(readValue<std::int8_t>(base, column.offset));
+        break;
     case DataType::UInt8:
-        return readValue<std::uint8_t>(base, column.offset);
+        storage.uint8Values[rowIndex] = readValue<std::uint8_t>(base, column.offset);
+        break;
     case DataType::Int16:
-        return readValue<std::int16_t>(base, column.offset);
+        storage.int16Values[rowIndex] = readValue<std::int16_t>(base, column.offset);
+        break;
     case DataType::UInt16:
-        return readValue<std::uint16_t>(base, column.offset);
+        storage.int32Values[rowIndex] = static_cast<std::int32_t>(readValue<std::uint16_t>(base, column.offset));
+        break;
     case DataType::Int32:
-        return readValue<std::int32_t>(base, column.offset);
+        storage.int32Values[rowIndex] = readValue<std::int32_t>(base, column.offset);
+        break;
     case DataType::UInt32:
-        return readValue<std::uint32_t>(base, column.offset);
+        storage.int64Values[rowIndex] = static_cast<std::int64_t>(readValue<std::uint32_t>(base, column.offset));
+        break;
     case DataType::Int64:
-        return readValue<std::int64_t>(base, column.offset);
+        storage.int64Values[rowIndex] = readValue<std::int64_t>(base, column.offset);
+        break;
     case DataType::UInt64:
-        return readValue<std::uint64_t>(base, column.offset);
+        storage.uint64Values[rowIndex] = readValue<std::uint64_t>(base, column.offset);
+        break;
     case DataType::Float:
-        return readValue<float>(base, column.offset);
+        storage.floatValues[rowIndex] = readValue<float>(base, column.offset);
+        break;
     case DataType::Double:
-        return readValue<double>(base, column.offset);
+        storage.doubleValues[rowIndex] = readValue<double>(base, column.offset);
+        break;
     }
-
-    return std::int8_t{};
 }
 }
 
-// Decode a caller-owned struct into row-owned values in expanded-column order.
+// Decode a caller-owned struct into preallocated column vectors in schema order.
 // The caller remains responsible for passing memory matching the CSV offsets.
-bool decodeRow(const TableSchema& table,
-               std::int64_t timestampMs,
-               const void* structPtr,
-               DecodedRow& row,
-               DataLoggerError& error)
+bool decodeIntoColumnBatch(const TableSchema& table,
+                           std::int64_t timestampMs,
+                           const void* structPtr,
+                           ColumnBatch& batch,
+                           DataLoggerError& error)
 {
     if (structPtr == nullptr)
     {
@@ -60,17 +71,28 @@ bool decodeRow(const TableSchema& table,
         return false;
     }
 
-    DecodedRow decoded;
-    decoded.timestampMs = timestampMs;
-    decoded.values.reserve(table.expandedColumns.size());
-
-    // Copy every payload value now so no caller pointer is retained after this function.
-    for (const ExpandedColumnSchema& column : table.expandedColumns)
+    if (batch.rowCount >= batch.rowCapacity)
     {
-        decoded.values.push_back(decodeField(structPtr, column));
+        error = { ErrorCode::DecodeFailed, "Column batch for table '" + table.tableName + "' is full." };
+        return false;
     }
 
-    row = decoded;
+    if (batch.timestamps.size() < batch.rowCapacity || batch.columns.size() != table.expandedColumns.size())
+    {
+        error = { ErrorCode::DecodeFailed, "Column batch for table '" + table.tableName + "' is not initialized for this schema." };
+        return false;
+    }
+
+    const std::size_t rowIndex = batch.rowCount;
+    batch.timestamps[rowIndex] = timestampMs;
+
+    // Copy every payload value now so no caller pointer is retained after this function.
+    for (std::size_t columnIndex = 0; columnIndex < table.expandedColumns.size(); ++columnIndex)
+    {
+        decodeFieldIntoColumn(structPtr, table.expandedColumns[columnIndex], batch.columns[columnIndex], rowIndex);
+    }
+
+    ++batch.rowCount;
     error = DataLoggerError{};
     return true;
 }

@@ -13,7 +13,6 @@
 #include <sstream>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace
@@ -40,23 +39,25 @@ public:
 
     // Mark statements as prepared only after the smoke tables are initialized.
     bool prepareInsertStatements(const DataLoggerCore::SchemaRegistry& registry,
-                                 const std::string& sqlSchemaName) override
+                                 const std::string& sqlSchemaName,
+                                 std::size_t batchSizeRows) override
     {
+        (void)batchSizeRows;
         statementsPrepared_ = tablesInitialized_ && !registry.tables.empty() && !sqlSchemaName.empty();
         return statementsPrepared_;
     }
 
     // Count inserted rows so the example can verify DataLogger flush behavior.
     bool insertBatch(const DataLoggerCore::TableSchema& table,
-                     const std::vector<DataLoggerCore::DecodedRow>& rows) override
+                     const DataLoggerCore::ColumnBatch& batch) override
     {
-        if (!statementsPrepared_ || rows.empty())
+        if (!statementsPrepared_ || batch.rowCount == 0)
         {
             return false;
         }
 
         insertedTableName_ = table.tableName;
-        insertedRowCount_ += rows.size();
+        insertedRowCount_ += batch.rowCount;
         return true;
     }
 
@@ -112,15 +113,17 @@ public:
 
     // Confirm insert preparation was requested after table initialization.
     bool prepareInsertStatements(const DataLoggerCore::SchemaRegistry& registry,
-                                 const std::string& sqlSchemaName) override
+                                 const std::string& sqlSchemaName,
+                                 std::size_t batchSizeRows) override
     {
+        (void)batchSizeRows;
         prepared_ = initialized_ && !registry.tables.empty() && !sqlSchemaName.empty();
         return prepared_;
     }
 
     // Fail the first insert on demand, then accept rows to verify retry behavior.
     bool insertBatch(const DataLoggerCore::TableSchema& table,
-                     const std::vector<DataLoggerCore::DecodedRow>& rows) override
+                     const DataLoggerCore::ColumnBatch& batch) override
     {
         (void)table;
         ++insertAttempts;
@@ -131,7 +134,7 @@ public:
             return false;
         }
 
-        insertedRows += rows.size();
+        insertedRows += batch.rowCount;
         error_ = {};
         return true;
     }
@@ -296,7 +299,7 @@ bool testDuplicateColumnRejection(std::vector<std::string>& failures)
     return passed;
 }
 
-// Verify fixed-offset binary decoding produces row-owned values in schema order.
+// Verify fixed-offset binary decoding fills typed column vectors in schema order.
 bool testBinaryDecoding(std::vector<std::string>& failures)
 {
     const std::filesystem::path directory = phase9Root() / "valid";
@@ -322,22 +325,24 @@ bool testBinaryDecoding(std::vector<std::string>& failures)
     payload.gyro[2] = 3.75F;
     payload.status = 12;
 
-    DataLoggerCore::DecodedRow row;
-    const bool decoded = DataLoggerCore::decodeRow(registry.tables.front(), 987654321, &payload, row, error);
+    DataLoggerCore::ColumnBatch batch;
+    DataLoggerCore::initializeColumnBatch(registry.tables.front(), 1, batch);
+    const bool decoded = DataLoggerCore::decodeIntoColumnBatch(registry.tables.front(), 987654321, &payload, batch, error);
 
     bool passed = true;
     passed &= expectPhase9(decoded, "binary row did not decode: " + error.message, failures);
-    passed &= expectPhase9(row.timestampMs == 987654321, "decoded timestamp did not match caller value", failures);
-    passed &= expectPhase9(row.values.size() == 4, "decoded value count was not 4", failures);
-    if (!decoded || row.values.size() != 4)
+    passed &= expectPhase9(batch.rowCount == 1, "decoded row count was not 1", failures);
+    passed &= expectPhase9(batch.timestamps[0] == 987654321, "decoded timestamp did not match caller value", failures);
+    passed &= expectPhase9(batch.columns.size() == 4, "decoded column count was not 4", failures);
+    if (!decoded || batch.columns.size() != 4)
     {
         return false;
     }
 
-    passed &= expectPhase9(std::get<float>(row.values[0]) == 1.25F, "decoded gyro_0 mismatch", failures);
-    passed &= expectPhase9(std::get<float>(row.values[1]) == 2.5F, "decoded gyro_1 mismatch", failures);
-    passed &= expectPhase9(std::get<float>(row.values[2]) == 3.75F, "decoded gyro_2 mismatch", failures);
-    passed &= expectPhase9(std::get<std::uint16_t>(row.values[3]) == 12, "decoded status mismatch", failures);
+    passed &= expectPhase9(batch.columns[0].floatValues[0] == 1.25F, "decoded gyro_0 mismatch", failures);
+    passed &= expectPhase9(batch.columns[1].floatValues[0] == 2.5F, "decoded gyro_1 mismatch", failures);
+    passed &= expectPhase9(batch.columns[2].floatValues[0] == 3.75F, "decoded gyro_2 mismatch", failures);
+    passed &= expectPhase9(batch.columns[3].int32Values[0] == 12, "decoded status mismatch", failures);
     return passed;
 }
 
@@ -495,26 +500,27 @@ int main(int argc, char* argv[])
     sample.status = 9;
 
     // Decode one row directly and verify timestamp plus expanded payload order.
-    DataLoggerCore::DecodedRow row;
+    DataLoggerCore::ColumnBatch batch;
+    DataLoggerCore::initializeColumnBatch(*schema, 1, batch);
     DataLoggerCore::DataLoggerError error;
-    if (!DataLoggerCore::decodeRow(*schema, 123456789, &sample, row, error))
+    if (!DataLoggerCore::decodeIntoColumnBatch(*schema, 123456789, &sample, batch, error))
     {
         return 1;
     }
 
-    if (row.timestampMs != 123456789 || row.values.size() != 8)
+    if (batch.rowCount != 1 || batch.timestamps[0] != 123456789 || batch.columns.size() != 8)
     {
         return 1;
     }
 
-    if (std::get<float>(row.values[0]) != 1.0F ||
-        std::get<float>(row.values[1]) != 2.0F ||
-        std::get<float>(row.values[2]) != 3.0F ||
-        std::get<float>(row.values[3]) != 4.0F ||
-        std::get<float>(row.values[4]) != 5.0F ||
-        std::get<float>(row.values[5]) != 6.0F ||
-        std::get<double>(row.values[6]) != 7.5 ||
-        std::get<std::uint16_t>(row.values[7]) != 9)
+    if (batch.columns[0].floatValues[0] != 1.0F ||
+        batch.columns[1].floatValues[0] != 2.0F ||
+        batch.columns[2].floatValues[0] != 3.0F ||
+        batch.columns[3].floatValues[0] != 4.0F ||
+        batch.columns[4].floatValues[0] != 5.0F ||
+        batch.columns[5].floatValues[0] != 6.0F ||
+        batch.columns[6].doubleValues[0] != 7.5 ||
+        batch.columns[7].int32Values[0] != 9)
     {
         return 1;
     }

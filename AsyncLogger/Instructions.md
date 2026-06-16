@@ -688,22 +688,6 @@ Do not store a `std::variant` per value.
 
 Instead, store one typed vector per column.
 
-A per-column variant is acceptable:
-
-```cpp
-using ColumnStorage = std::variant<
-    std::vector<std::int8_t>,
-    std::vector<std::uint8_t>,
-    std::vector<std::int16_t>,
-    std::vector<std::uint16_t>,
-    std::vector<std::int32_t>,
-    std::vector<std::uint32_t>,
-    std::vector<std::int64_t>,
-    std::vector<std::uint64_t>,
-    std::vector<float>,
-    std::vector<double>
->;
-```
 
 This means:
 
@@ -712,7 +696,6 @@ bad old model:
     one variant per value
 
 better new model:
-    one variant per column
     typed contiguous values per column
 ```
 

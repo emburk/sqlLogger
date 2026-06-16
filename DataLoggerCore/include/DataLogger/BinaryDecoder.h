@@ -7,10 +7,10 @@
 
 namespace DataLoggerCore
 {
-// Decode one caller-owned struct into row-owned values using fixed schema offsets.
-bool decodeRow(const TableSchema& table,
-               std::int64_t timestampMs,
-               const void* structPtr,
-               DecodedRow& row,
-               DataLoggerError& error);
+// Decode one caller-owned struct into the next preallocated typed batch slot.
+bool decodeIntoColumnBatch(const TableSchema& table,
+                           std::int64_t timestampMs,
+                           const void* structPtr,
+                           ColumnBatch& batch,
+                           DataLoggerError& error);
 }

@@ -6,6 +6,7 @@
 #include <sql.h>
 #include <sqlext.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <ctime>
 #include <iomanip>
@@ -20,10 +21,10 @@ namespace SqlServerBackend
 namespace
 {
 using DataLoggerCore::BackendError;
+using DataLoggerCore::ColumnBatch;
+using DataLoggerCore::ColumnStorage;
 using DataLoggerCore::DataType;
-using DataLoggerCore::DecodedRow;
 using DataLoggerCore::ExistingTablePolicy;
-using DataLoggerCore::FieldValue;
 using DataLoggerCore::OdbcDiagnostic;
 using DataLoggerCore::SchemaRegistry;
 using DataLoggerCore::TableSchema;
@@ -125,13 +126,6 @@ SQL_NUMERIC_STRUCT toNumericStruct(std::uint64_t value)
     return numeric;
 }
 
-// Return a typed value from the row variant; schema validation keeps this order correct.
-template<typename T>
-T fieldAs(const FieldValue& value)
-{
-    return std::get<T>(value);
-}
-
 class OdbcHandle
 {
 public:
@@ -185,69 +179,30 @@ private:
     SQLHANDLE handle_ = SQL_NULL_HANDLE;
 };
 
+struct BoundColumn
+{
+    DataType datatype = DataType::Int8;
+    std::vector<SQLLEN> indicators;
+    std::vector<SQL_NUMERIC_STRUCT> numericValues;
+};
+
 struct StatementInfo
 {
     OdbcHandle statement;
+    std::size_t capacityRows = 0;
+    bool parametersBound = false;
+    const ColumnBatch* boundBatch = nullptr;
+    std::vector<SQLLEN> timestampIndicators;
+    std::vector<BoundColumn> payloadColumns;
+    std::vector<SQLUSMALLINT> rowStatuses;
+    SQLULEN processedCount = 0;
 
-    // Statements own a prepared ODBC statement handle for one table.
+    // Statements own a prepared ODBC handle plus reusable parameter-array buffers.
     StatementInfo()
         : statement(SQL_HANDLE_STMT)
     {
     }
 };
-
-struct BoundColumn
-{
-    DataType datatype = DataType::Int8;
-    std::vector<SQLLEN> indicators;
-    std::vector<std::int16_t> int16Values;
-    std::vector<std::uint8_t> uint8Values;
-    std::vector<std::int32_t> int32Values;
-    std::vector<std::int64_t> int64Values;
-    std::vector<float> floatValues;
-    std::vector<double> doubleValues;
-    std::vector<SQL_NUMERIC_STRUCT> numericValues;
-};
-
-// Append one typed payload value into a column-wise ODBC buffer.
-void appendPayloadValue(BoundColumn& column, const FieldValue& value)
-{
-    column.indicators.push_back(kNotNullIndicator);
-
-    switch (column.datatype)
-    {
-    case DataType::Int8:
-        column.int16Values.push_back(static_cast<std::int16_t>(fieldAs<std::int8_t>(value)));
-        break;
-    case DataType::UInt8:
-        column.uint8Values.push_back(fieldAs<std::uint8_t>(value));
-        break;
-    case DataType::Int16:
-        column.int16Values.push_back(fieldAs<std::int16_t>(value));
-        break;
-    case DataType::UInt16:
-        column.int32Values.push_back(static_cast<std::int32_t>(fieldAs<std::uint16_t>(value)));
-        break;
-    case DataType::Int32:
-        column.int32Values.push_back(fieldAs<std::int32_t>(value));
-        break;
-    case DataType::UInt32:
-        column.int64Values.push_back(static_cast<std::int64_t>(fieldAs<std::uint32_t>(value)));
-        break;
-    case DataType::Int64:
-        column.int64Values.push_back(fieldAs<std::int64_t>(value));
-        break;
-    case DataType::UInt64:
-        column.numericValues.push_back(toNumericStruct(fieldAs<std::uint64_t>(value)));
-        break;
-    case DataType::Float:
-        column.floatValues.push_back(fieldAs<float>(value));
-        break;
-    case DataType::Double:
-        column.doubleValues.push_back(fieldAs<double>(value));
-        break;
-    }
-}
 
 // Return the C type used for binding one payload column.
 SQLSMALLINT cTypeFor(DataType datatype)
@@ -317,28 +272,39 @@ SQLULEN columnSizeFor(DataType datatype)
     }
 }
 
-// Return the active data pointer for a populated bound column.
-SQLPOINTER dataPointerFor(BoundColumn& column)
+// Fill the reusable DECIMAL conversion buffer used by full-range uint64 columns.
+void fillNumericValues(BoundColumn& boundColumn,
+                       const ColumnStorage& sourceColumn,
+                       std::size_t rowCount)
 {
-    switch (column.datatype)
+    for (std::size_t rowIndex = 0; rowIndex < rowCount; ++rowIndex)
+    {
+        boundColumn.numericValues[rowIndex] = toNumericStruct(sourceColumn.uint64Values[rowIndex]);
+    }
+}
+
+// Return the active data pointer, binding directly from the column batch when possible.
+SQLPOINTER dataPointerFor(const ColumnStorage& sourceColumn, BoundColumn& boundColumn)
+{
+    switch (sourceColumn.datatype)
     {
     case DataType::Int8:
     case DataType::Int16:
-        return column.int16Values.data();
+        return const_cast<std::int16_t*>(sourceColumn.int16Values.data());
     case DataType::UInt8:
-        return column.uint8Values.data();
+        return const_cast<std::uint8_t*>(sourceColumn.uint8Values.data());
     case DataType::UInt16:
     case DataType::Int32:
-        return column.int32Values.data();
+        return const_cast<std::int32_t*>(sourceColumn.int32Values.data());
     case DataType::UInt32:
     case DataType::Int64:
-        return column.int64Values.data();
+        return const_cast<std::int64_t*>(sourceColumn.int64Values.data());
     case DataType::UInt64:
-        return column.numericValues.data();
+        return boundColumn.numericValues.data();
     case DataType::Float:
-        return column.floatValues.data();
+        return const_cast<float*>(sourceColumn.floatValues.data());
     case DataType::Double:
-        return column.doubleValues.data();
+        return const_cast<double*>(sourceColumn.doubleValues.data());
     }
 
     return nullptr;
@@ -485,7 +451,9 @@ public:
     }
 
     // Prepare and retain one INSERT statement handle for every table schema.
-    bool prepareInsertStatements(const SchemaRegistry& registry, const std::string& sqlSchemaName)
+    bool prepareInsertStatements(const SchemaRegistry& registry,
+                                 const std::string& sqlSchemaName,
+                                 std::size_t batchSizeRows)
     {
         clearError();
         statements_.clear();
@@ -509,18 +477,19 @@ public:
                 return false;
             }
 
+            initializeStatementBuffers(*info, table, batchSizeRows);
             statements_[table.tableName] = std::move(info);
         }
 
         return true;
     }
 
-    // Bind column-wise parameter arrays and execute the batch in one transaction.
-    bool insertBatch(const TableSchema& table, const std::vector<DecodedRow>& rows)
+    // Execute a predecoded column batch in one transaction.
+    bool insertBatch(const TableSchema& table, const ColumnBatch& batch)
     {
         clearError();
 
-        if (rows.empty())
+        if (batch.rowCount == 0)
         {
             return true;
         }
@@ -532,29 +501,19 @@ public:
             return false;
         }
 
-        if (!validateRows(table, rows))
+        StatementInfo& info = *statement->second;
+        if (!validateBatch(table, batch, info))
         {
             return false;
         }
 
-        OdbcBatchBuffers buffers = buildBatchBuffers(table, rows);
-        SQLHSTMT statementHandle = statement->second->statement.get();
-
-        SQLFreeStmt(statementHandle, SQL_RESET_PARAMS);
-        SQLULEN rowCount = static_cast<SQLULEN>(rows.size());
-        SQLULEN processedCount = 0;
-        std::vector<SQLUSMALLINT> rowStatuses(rows.size(), SQL_PARAM_SUCCESS);
-
-        if (!setStatementAttribute(statementHandle, SQL_ATTR_PARAM_BIND_TYPE, SQL_PARAM_BIND_BY_COLUMN) ||
-            !setStatementAttribute(statementHandle, SQL_ATTR_PARAMSET_SIZE, rowCount) ||
-            !setStatementAttribute(statementHandle, SQL_ATTR_PARAMS_PROCESSED_PTR, reinterpret_cast<SQLULEN>(&processedCount)) ||
-            !setStatementAttribute(statementHandle, SQL_ATTR_PARAM_STATUS_PTR, reinterpret_cast<SQLULEN>(rowStatuses.data())))
+        SQLHSTMT statementHandle = info.statement.get();
+        if (!ensureParametersBound(statementHandle, table, batch, info))
         {
-            setError("Unable to configure ODBC parameter array attributes.", SQL_HANDLE_STMT, statementHandle);
             return false;
         }
 
-        if (!bindBatchParameters(statementHandle, table, buffers))
+        if (!prepareBatchExecution(statementHandle, table, batch, info))
         {
             return false;
         }
@@ -593,13 +552,6 @@ public:
     }
 
 private:
-    struct OdbcBatchBuffers
-    {
-        std::vector<std::int64_t> timestamps;
-        std::vector<SQLLEN> timestampIndicators;
-        std::vector<BoundColumn> payloadColumns;
-    };
-
     // Clear the last backend error before starting a public operation.
     void clearError()
     {
@@ -617,6 +569,32 @@ private:
     {
         lastError_.message = message;
         lastError_.diagnostics = collectDiagnostics(handleType, handle);
+    }
+
+    // Allocate reusable parameter-array side buffers for one prepared table.
+    void initializeStatementBuffers(StatementInfo& info,
+                                    const TableSchema& table,
+                                    std::size_t batchSizeRows)
+    {
+        info.capacityRows = batchSizeRows;
+        info.parametersBound = false;
+        info.boundBatch = nullptr;
+        info.processedCount = 0;
+        info.timestampIndicators.assign(batchSizeRows, kNotNullIndicator);
+        info.rowStatuses.assign(batchSizeRows, static_cast<SQLUSMALLINT>(SQL_PARAM_SUCCESS));
+        info.payloadColumns.clear();
+        info.payloadColumns.resize(table.expandedColumns.size());
+
+        for (std::size_t columnIndex = 0; columnIndex < table.expandedColumns.size(); ++columnIndex)
+        {
+            BoundColumn& column = info.payloadColumns[columnIndex];
+            column.datatype = table.expandedColumns[columnIndex].datatype;
+            column.indicators.assign(batchSizeRows, kNotNullIndicator);
+            if (column.datatype == DataType::UInt64)
+            {
+                column.numericValues.resize(batchSizeRows);
+            }
+        }
     }
 
     // Read all ODBC diagnostic records for a failed handle operation.
@@ -761,15 +739,35 @@ private:
         return sql.str();
     }
 
-    // Ensure decoded rows match the expected expanded payload width.
-    bool validateRows(const TableSchema& table, const std::vector<DecodedRow>& rows)
+    // Ensure the typed batch matches the prepared table and fixed capacity.
+    bool validateBatch(const TableSchema& table, const ColumnBatch& batch, const StatementInfo& info)
     {
-        for (std::size_t i = 0; i < rows.size(); ++i)
+        if (batch.columns.size() != table.expandedColumns.size())
         {
-            if (rows[i].values.size() != table.expandedColumns.size())
+            setError("Column batch for table '" + table.tableName + "' does not match the expanded schema width.");
+            return false;
+        }
+
+        if (batch.rowCount > batch.rowCapacity || batch.rowCount > info.capacityRows)
+        {
+            setError("Column batch for table '" + table.tableName + "' exceeds the prepared batch capacity.");
+            return false;
+        }
+
+        if (batch.timestamps.size() < batch.rowCapacity)
+        {
+            setError("Timestamp storage for table '" + table.tableName + "' is smaller than the batch capacity.");
+            return false;
+        }
+
+        for (std::size_t columnIndex = 0; columnIndex < batch.columns.size(); ++columnIndex)
+        {
+            const ColumnStorage& column = batch.columns[columnIndex];
+            if (column.datatype != table.expandedColumns[columnIndex].datatype ||
+                DataLoggerCore::columnStorageSize(column) < batch.rowCapacity)
             {
-                setError("Decoded row " + std::to_string(i) + " for table '" + table.tableName +
-                         "' does not match the expanded schema width.");
+                setError("Column storage for '" + table.expandedColumns[columnIndex].sqlName +
+                         "' in table '" + table.tableName + "' is not initialized correctly.");
                 return false;
             }
         }
@@ -777,37 +775,18 @@ private:
         return true;
     }
 
-    // Convert row-oriented decoded rows into column-wise ODBC parameter buffers.
-    OdbcBatchBuffers buildBatchBuffers(const TableSchema& table, const std::vector<DecodedRow>& rows) const
+    // Bind timestamp plus payload arrays once to the stable preallocated batch storage.
+    bool ensureParametersBound(SQLHSTMT statementHandle,
+                               const TableSchema& table,
+                               const ColumnBatch& batch,
+                               StatementInfo& info)
     {
-        OdbcBatchBuffers buffers;
-        buffers.timestamps.reserve(rows.size());
-        buffers.timestampIndicators.reserve(rows.size());
-        buffers.payloadColumns.resize(table.expandedColumns.size());
-
-        for (std::size_t columnIndex = 0; columnIndex < table.expandedColumns.size(); ++columnIndex)
+        if (info.parametersBound && info.boundBatch == &batch)
         {
-            buffers.payloadColumns[columnIndex].datatype = table.expandedColumns[columnIndex].datatype;
-            buffers.payloadColumns[columnIndex].indicators.reserve(rows.size());
+            return true;
         }
 
-        for (const DecodedRow& row : rows)
-        {
-            buffers.timestamps.push_back(row.timestampMs);
-            buffers.timestampIndicators.push_back(kNotNullIndicator);
-
-            for (std::size_t columnIndex = 0; columnIndex < row.values.size(); ++columnIndex)
-            {
-                appendPayloadValue(buffers.payloadColumns[columnIndex], row.values[columnIndex]);
-            }
-        }
-
-        return buffers;
-    }
-
-    // Bind timestamp plus payload columns as one ODBC parameter array.
-    bool bindBatchParameters(SQLHSTMT statementHandle, const TableSchema& table, OdbcBatchBuffers& buffers)
-    {
+        SQLFreeStmt(statementHandle, SQL_RESET_PARAMS);
         SQLRETURN result = SQLBindParameter(statementHandle,
                                             1,
                                             SQL_PARAM_INPUT,
@@ -815,18 +794,19 @@ private:
                                             SQL_BIGINT,
                                             0,
                                             0,
-                                            buffers.timestamps.data(),
+                                            const_cast<std::int64_t*>(batch.timestamps.data()),
                                             sizeof(std::int64_t),
-                                            buffers.timestampIndicators.data());
+                                            info.timestampIndicators.data());
         if (!isOdbcSuccess(result))
         {
             setError("Unable to bind timestamp parameter for table '" + table.tableName + "'.", SQL_HANDLE_STMT, statementHandle);
             return false;
         }
 
-        for (std::size_t columnIndex = 0; columnIndex < buffers.payloadColumns.size(); ++columnIndex)
+        for (std::size_t columnIndex = 0; columnIndex < info.payloadColumns.size(); ++columnIndex)
         {
-            BoundColumn& column = buffers.payloadColumns[columnIndex];
+            BoundColumn& column = info.payloadColumns[columnIndex];
+            const ColumnStorage& sourceColumn = batch.columns[columnIndex];
             result = SQLBindParameter(statementHandle,
                                       static_cast<SQLUSMALLINT>(columnIndex + 2),
                                       SQL_PARAM_INPUT,
@@ -834,7 +814,7 @@ private:
                                       sqlParameterTypeFor(column.datatype),
                                       columnSizeFor(column.datatype),
                                       0,
-                                      dataPointerFor(column),
+                                      dataPointerFor(sourceColumn, column),
                                       bufferLengthFor(column.datatype),
                                       column.indicators.data());
             if (!isOdbcSuccess(result))
@@ -851,6 +831,42 @@ private:
             {
                 return false;
             }
+        }
+
+        info.parametersBound = true;
+        info.boundBatch = &batch;
+        return true;
+    }
+
+    // Set per-execution ODBC attributes and refresh reusable conversion buffers.
+    bool prepareBatchExecution(SQLHSTMT statementHandle,
+                               const TableSchema& table,
+                               const ColumnBatch& batch,
+                               StatementInfo& info)
+    {
+        const SQLULEN rowCount = static_cast<SQLULEN>(batch.rowCount);
+        info.processedCount = 0;
+        std::fill(info.rowStatuses.begin(),
+                  info.rowStatuses.begin() + batch.rowCount,
+                  static_cast<SQLUSMALLINT>(SQL_PARAM_SUCCESS));
+
+        for (std::size_t columnIndex = 0; columnIndex < info.payloadColumns.size(); ++columnIndex)
+        {
+            if (info.payloadColumns[columnIndex].datatype == DataType::UInt64)
+            {
+                fillNumericValues(info.payloadColumns[columnIndex], batch.columns[columnIndex], batch.rowCount);
+            }
+        }
+
+        if (!setStatementAttribute(statementHandle, SQL_ATTR_PARAM_BIND_TYPE, SQL_PARAM_BIND_BY_COLUMN) ||
+            !setStatementAttribute(statementHandle, SQL_ATTR_PARAMSET_SIZE, rowCount) ||
+            !setStatementPointerAttribute(statementHandle, SQL_ATTR_PARAMS_PROCESSED_PTR, &info.processedCount) ||
+            !setStatementPointerAttribute(statementHandle, SQL_ATTR_PARAM_STATUS_PTR, info.rowStatuses.data()))
+        {
+            setError("Unable to configure ODBC parameter array attributes for table '" + table.tableName + "'.",
+                     SQL_HANDLE_STMT,
+                     statementHandle);
+            return false;
         }
 
         return true;
@@ -905,6 +921,13 @@ private:
     bool setStatementAttribute(SQLHSTMT statementHandle, SQLINTEGER attribute, SQLULEN value)
     {
         SQLRETURN result = SQLSetStmtAttr(statementHandle, attribute, reinterpret_cast<SQLPOINTER>(value), 0);
+        return isOdbcSuccess(result);
+    }
+
+    // Set an ODBC statement attribute represented by a real pointer.
+    bool setStatementPointerAttribute(SQLHSTMT statementHandle, SQLINTEGER attribute, SQLPOINTER value)
+    {
+        SQLRETURN result = SQLSetStmtAttr(statementHandle, attribute, value, 0);
         return isOdbcSuccess(result);
     }
 
@@ -979,16 +1002,18 @@ bool SqlServerOdbcBackend::initializeTables(const SchemaRegistry& registry,
     return impl_->initializeTables(registry, sqlSchemaName, policy);
 }
 
-// Prepare one reusable parameterized INSERT statement per table.
-bool SqlServerOdbcBackend::prepareInsertStatements(const SchemaRegistry& registry, const std::string& sqlSchemaName)
+// Prepare one reusable parameterized INSERT statement and reusable buffers per table.
+bool SqlServerOdbcBackend::prepareInsertStatements(const SchemaRegistry& registry,
+                                                   const std::string& sqlSchemaName,
+                                                   std::size_t batchSizeRows)
 {
-    return impl_->prepareInsertStatements(registry, sqlSchemaName);
+    return impl_->prepareInsertStatements(registry, sqlSchemaName, batchSizeRows);
 }
 
-// Insert one decoded row batch using ODBC column-wise parameter arrays.
-bool SqlServerOdbcBackend::insertBatch(const TableSchema& table, const std::vector<DecodedRow>& rows)
+// Insert one decoded column batch using ODBC column-wise parameter arrays.
+bool SqlServerOdbcBackend::insertBatch(const TableSchema& table, const ColumnBatch& batch)
 {
-    return impl_->insertBatch(table, rows);
+    return impl_->insertBatch(table, batch);
 }
 
 // Return the most recent backend error and collected ODBC diagnostics.

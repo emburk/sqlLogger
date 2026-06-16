@@ -2,6 +2,7 @@
 
 #include "DataLogger/IDBBackend.h"
 
+#include <cstddef>
 #include <memory>
 
 namespace SqlServerBackend
@@ -25,13 +26,14 @@ public:
                           const std::string& sqlSchemaName,
                           DataLoggerCore::ExistingTablePolicy policy) override;
 
-    // Prepare one reusable parameterized INSERT statement per table.
+    // Prepare one reusable parameterized INSERT statement and buffers per table.
     bool prepareInsertStatements(const DataLoggerCore::SchemaRegistry& registry,
-                                 const std::string& sqlSchemaName) override;
+                                 const std::string& sqlSchemaName,
+                                 std::size_t batchSizeRows) override;
 
-    // Insert one decoded row batch using ODBC column-wise parameter arrays.
+    // Insert one decoded column batch using ODBC column-wise parameter arrays.
     bool insertBatch(const DataLoggerCore::TableSchema& table,
-                     const std::vector<DataLoggerCore::DecodedRow>& rows) override;
+                     const DataLoggerCore::ColumnBatch& batch) override;
 
     // Return the most recent backend error and collected ODBC diagnostics.
     DataLoggerCore::BackendError lastError() const override;

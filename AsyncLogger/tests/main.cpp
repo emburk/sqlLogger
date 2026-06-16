@@ -1,7 +1,9 @@
 #include "AsyncLogger/AsyncDataLogger.h"
 #include "AsyncLogger/SqlLoggerC.h"
 
+#include "DataLogger/BinaryDecoder.h"
 #include "DataLogger/IDBBackend.h"
+#include "DataLogger/Schema.h"
 #include "SqlServerBackend/SqlServerOdbcBackend.h"
 
 #define NOMINMAX
@@ -10,14 +12,19 @@
 #include <sqlext.h>
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -34,6 +41,22 @@ struct ImuData
     float accel[3];
     double temperature;
     std::uint16_t status;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+struct AllNumericPayload
+{
+    std::int8_t i8;
+    std::uint8_t u8;
+    std::int16_t i16;
+    std::uint16_t u16;
+    std::int32_t i32;
+    std::uint32_t u32;
+    std::int64_t i64;
+    std::uint64_t u64;
+    float f32;
+    double f64;
 };
 #pragma pack(pop)
 
@@ -62,23 +85,35 @@ public:
 
     // Record insert preparation calls without preparing real ODBC statements.
     bool prepareInsertStatements(const DataLoggerCore::SchemaRegistry& registry,
-                                 const std::string& sqlSchemaName) override
+                                 const std::string& sqlSchemaName,
+                                 std::size_t batchSizeRows) override
     {
         (void)registry;
         (void)sqlSchemaName;
+        (void)batchSizeRows;
         prepareCalls.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
 
-    // Capture decoded rows and optionally block to make queue-full tests deterministic.
+    // Capture decoded batch counts and optionally block to make queue-full tests deterministic.
     bool insertBatch(const DataLoggerCore::TableSchema& table,
-                     const std::vector<DataLoggerCore::DecodedRow>& rows) override
+                     const DataLoggerCore::ColumnBatch& batch) override
     {
         {
             std::lock_guard<std::mutex> lock(recordMutex);
             lastTableName = table.tableName;
-            lastBatchRows = rows.size();
+            lastBatchRows = batch.rowCount;
             insertThreadHash = std::hash<std::thread::id>{}(std::this_thread::get_id());
+            observedBatchRows.push_back(batch.rowCount);
+            observedTables.push_back(table.tableName);
+            observedCapacityStable = observedCapacityStable &&
+                batch.timestamps.size() == batch.rowCapacity &&
+                batch.rowCapacity > 0;
+            for (const DataLoggerCore::ColumnStorage& column : batch.columns)
+            {
+                observedCapacityStable = observedCapacityStable &&
+                    DataLoggerCore::columnStorageSize(column) == batch.rowCapacity;
+            }
         }
 
         insertEntered.store(true, std::memory_order_release);
@@ -88,7 +123,7 @@ public:
         }
 
         insertCalls.fetch_add(1, std::memory_order_relaxed);
-        rowsInserted.fetch_add(static_cast<std::uint64_t>(rows.size()), std::memory_order_relaxed);
+        rowsInserted.fetch_add(static_cast<std::uint64_t>(batch.rowCount), std::memory_order_relaxed);
         return insertSucceeds.load(std::memory_order_acquire);
     }
 
@@ -110,6 +145,9 @@ public:
     std::string lastTableName;
     std::size_t lastBatchRows = 0;
     std::size_t insertThreadHash = 0;
+    bool observedCapacityStable = true;
+    std::vector<std::size_t> observedBatchRows;
+    std::vector<std::string> observedTables;
     DataLoggerCore::BackendError error;
 };
 
@@ -360,19 +398,142 @@ std::string findAsyncSmokeSchemaDirectory()
     return "AsyncLogger\\tests\\schemas";
 }
 
-// Read the SQL Server ODBC connection string from the environment.
-std::string readConnectionString()
+// Trim whitespace and common UTF-8 BOM bytes around file-based connection strings.
+std::string trimConnectionString(std::string value)
 {
-    char* value = nullptr;
-    std::size_t length = 0;
-    if (_dupenv_s(&value, &length, "SQLLOGGER_CONNECTION_STRING") != 0 || value == nullptr)
+    if (value.size() >= 3 &&
+        static_cast<unsigned char>(value[0]) == 0xEF &&
+        static_cast<unsigned char>(value[1]) == 0xBB &&
+        static_cast<unsigned char>(value[2]) == 0xBF)
+    {
+        value.erase(0, 3);
+    }
+
+    const std::string whitespace = " \t\r\n";
+    const std::size_t first = value.find_first_not_of(whitespace);
+    if (first == std::string::npos)
     {
         return {};
     }
 
-    std::string connectionString(value);
-    std::free(value);
-    return connectionString;
+    const std::size_t last = value.find_last_not_of(whitespace);
+    return value.substr(first, last - first + 1);
+}
+
+// Read a whole connection-string file when a local or CLI path is provided.
+bool readConnectionStringFile(const std::filesystem::path& path,
+                              std::string& connectionString,
+                              std::string& error)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input)
+    {
+        error = "Unable to open connection-string file '" + path.string() + "'.";
+        return false;
+    }
+
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    connectionString = trimConnectionString(buffer.str());
+    if (connectionString.empty())
+    {
+        error = "Connection-string file '" + path.string() + "' is empty.";
+        return false;
+    }
+
+    return true;
+}
+
+// Find an optional ignored local connection-string file near the async tests.
+std::filesystem::path findLocalConnectionStringFile()
+{
+    std::filesystem::path current = std::filesystem::current_path();
+    for (int i = 0; i < 8; ++i)
+    {
+        const std::filesystem::path candidate = current / "AsyncLogger" / "tests" / "sql_connection.txt";
+        if (std::filesystem::exists(candidate))
+        {
+            return candidate;
+        }
+
+        if (!current.has_parent_path())
+        {
+            break;
+        }
+
+        current = current.parent_path();
+    }
+
+    return {};
+}
+
+// Resolve the SQL connection from CLI, environment, or an ignored local file.
+bool readConnectionString(int argc,
+                          char** argv,
+                          std::string& connectionString,
+                          std::string& error)
+{
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string argument = argv[i];
+        const std::string inlinePrefix = "--connection-string=";
+        const std::string filePrefix = "--connection-string-file=";
+
+        if (argument == "--connection-string")
+        {
+            if (i + 1 >= argc)
+            {
+                error = "--connection-string requires a following value.";
+                return false;
+            }
+
+            connectionString = trimConnectionString(argv[++i]);
+            return !connectionString.empty();
+        }
+
+        if (argument.rfind(inlinePrefix, 0) == 0)
+        {
+            connectionString = trimConnectionString(argument.substr(inlinePrefix.size()));
+            return !connectionString.empty();
+        }
+
+        if (argument == "--connection-string-file")
+        {
+            if (i + 1 >= argc)
+            {
+                error = "--connection-string-file requires a following path.";
+                return false;
+            }
+
+            return readConnectionStringFile(argv[++i], connectionString, error);
+        }
+
+        if (argument.rfind(filePrefix, 0) == 0)
+        {
+            return readConnectionStringFile(argument.substr(filePrefix.size()), connectionString, error);
+        }
+    }
+
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, "SQLLOGGER_CONNECTION_STRING") == 0 && value != nullptr)
+    {
+        connectionString = trimConnectionString(value);
+        std::free(value);
+        if (!connectionString.empty())
+        {
+            return true;
+        }
+    }
+
+    const std::filesystem::path localFile = findLocalConnectionStringFile();
+    if (!localFile.empty())
+    {
+        return readConnectionStringFile(localFile, connectionString, error);
+    }
+
+    error = "SQL connection string was not provided. Use SQLLOGGER_CONNECTION_STRING, --connection-string, --connection-string-file, or AsyncLogger/tests/sql_connection.txt.";
+    return false;
 }
 
 // Drop the dedicated smoke table created by the real SQL test.
@@ -425,6 +586,40 @@ DataLoggerCore::DataLoggerConfig makeDataConfig(std::size_t batchSizeRows)
     config.existingTablePolicy = DataLoggerCore::ExistingTablePolicy::Drop;
     config.printInfoFlag = false;
     config.printErrorFlag = false;
+    return config;
+}
+
+// Create a schema directory under x64 so generated test schemas stay out of source.
+std::filesystem::path makeGeneratedSchemaDirectory(const std::string& name)
+{
+    const std::string uniqueName = name + "_" + std::to_string(GetCurrentProcessId());
+    const std::filesystem::path directory = std::filesystem::path("x64") / "AsyncLoggerGeneratedSchemas" / uniqueName;
+    std::filesystem::create_directories(directory);
+    return directory;
+}
+
+// Write one generated CSV schema file for focused test coverage.
+bool writeGeneratedSchema(const std::filesystem::path& directory,
+                          const std::string& fileName,
+                          const std::string& text)
+{
+    std::filesystem::create_directories(directory);
+    std::ofstream output(directory / fileName, std::ios::trunc);
+    if (!output)
+    {
+        return false;
+    }
+
+    output << text;
+    return static_cast<bool>(output);
+}
+
+// Build a normal DataLogger config against a generated schema directory.
+DataLoggerCore::DataLoggerConfig makeGeneratedDataConfig(const std::filesystem::path& schemaDirectory,
+                                                         std::size_t batchSizeRows)
+{
+    DataLoggerCore::DataLoggerConfig config = makeDataConfig(batchSizeRows);
+    config.schemaDirectory = schemaDirectory.string();
     return config;
 }
 
@@ -789,17 +984,144 @@ int testProducerDoesNotCallBackend()
     return failures;
 }
 
-// Run a real SQL Server async smoke test and drop the dedicated table afterward.
-int testRealSqlSmoke()
+// Verify the typed column decoder stores every supported numeric type correctly.
+int testTypedColumnBatchAllNumericTypes()
 {
-    const std::string connectionString = readConnectionString();
-    if (connectionString.empty())
+    DataLoggerCore::TableSchema table;
+    table.tableName = "all_numeric";
+    table.expandedColumns = {
+        { "i8", offsetof(AllNumericPayload, i8), DataLoggerCore::DataType::Int8, sizeof(std::int8_t) },
+        { "u8", offsetof(AllNumericPayload, u8), DataLoggerCore::DataType::UInt8, sizeof(std::uint8_t) },
+        { "i16", offsetof(AllNumericPayload, i16), DataLoggerCore::DataType::Int16, sizeof(std::int16_t) },
+        { "u16", offsetof(AllNumericPayload, u16), DataLoggerCore::DataType::UInt16, sizeof(std::uint16_t) },
+        { "i32", offsetof(AllNumericPayload, i32), DataLoggerCore::DataType::Int32, sizeof(std::int32_t) },
+        { "u32", offsetof(AllNumericPayload, u32), DataLoggerCore::DataType::UInt32, sizeof(std::uint32_t) },
+        { "i64", offsetof(AllNumericPayload, i64), DataLoggerCore::DataType::Int64, sizeof(std::int64_t) },
+        { "u64", offsetof(AllNumericPayload, u64), DataLoggerCore::DataType::UInt64, sizeof(std::uint64_t) },
+        { "f32", offsetof(AllNumericPayload, f32), DataLoggerCore::DataType::Float, sizeof(float) },
+        { "f64", offsetof(AllNumericPayload, f64), DataLoggerCore::DataType::Double, sizeof(double) }
+    };
+
+    DataLoggerCore::ColumnBatch batch;
+    DataLoggerCore::initializeColumnBatch(table, 2, batch);
+
+    AllNumericPayload first{};
+    first.i8 = -8;
+    first.u8 = 250;
+    first.i16 = -1234;
+    first.u16 = 65000;
+    first.i32 = -1234567;
+    first.u32 = 4000000000U;
+    first.i64 = -1234567890123LL;
+    first.u64 = std::numeric_limits<std::uint64_t>::max();
+    first.f32 = 1.25F;
+    first.f64 = -9.5;
+
+    DataLoggerCore::DataLoggerError error;
+    int failures = 0;
+    failures += expect(DataLoggerCore::decodeIntoColumnBatch(table, 111, &first, batch, error), "all numeric first row decodes");
+    failures += expect(batch.rowCount == 1, "all numeric row count increments");
+    failures += expect(batch.timestamps[0] == 111, "all numeric timestamp stored");
+    failures += expect(batch.columns[0].int16Values[0] == -8, "int8 stored as smallint");
+    failures += expect(batch.columns[1].uint8Values[0] == 250, "uint8 stored as tinyint");
+    failures += expect(batch.columns[2].int16Values[0] == -1234, "int16 stored");
+    failures += expect(batch.columns[3].int32Values[0] == 65000, "uint16 stored as int");
+    failures += expect(batch.columns[4].int32Values[0] == -1234567, "int32 stored");
+    failures += expect(batch.columns[5].int64Values[0] == 4000000000LL, "uint32 stored as bigint");
+    failures += expect(batch.columns[6].int64Values[0] == -1234567890123LL, "int64 stored");
+    failures += expect(batch.columns[7].uint64Values[0] == std::numeric_limits<std::uint64_t>::max(), "uint64 stored");
+    failures += expect(std::fabs(batch.columns[8].floatValues[0] - 1.25F) < 0.0001F, "float stored");
+    failures += expect(std::fabs(batch.columns[9].doubleValues[0] + 9.5) < 0.0001, "double stored");
+    return failures;
+}
+
+// Verify generated split schemas auto-write to every table through the async shell.
+int testGeneratedManyTableAutoWrite()
+{
+    const std::filesystem::path directory = makeGeneratedSchemaDirectory("many_tables");
+    const bool wroteA = writeGeneratedSchema(directory,
+                                             "split_a.csv",
+                                             "column_name,offset,datatype,size,length,unit,description\n"
+                                             "gyro,8,float,4,3,rad/s,gyro\n");
+    const bool wroteB = writeGeneratedSchema(directory,
+                                             "split_b.csv",
+                                             "column_name,offset,datatype,size,length,unit,description\n"
+                                             "status,40,uint16,2,1,,status\n");
+
+    int failures = 0;
+    failures += expect(wroteA && wroteB, "generated split schemas written");
+
+    auto mock = std::make_unique<MockBackend>();
+    MockBackend* backend = mock.get();
+    AsyncLogger::AsyncDataLogger logger(std::move(mock));
+    failures += expect(logger.initialize(makeGeneratedDataConfig(directory, 100), makeAsyncConfig(8)), "many-table logger initializes");
+    failures += expect(logger.autoRegisterTables(), "many-table autoRegisterTables succeeds");
+    failures += expect(logger.start(), "many-table logger starts");
+
+    const ImuData sample = makeSample(11);
+    failures += expect(logger.tryAutoWrite(11000, &sample, sizeof(sample)), "many-table auto write accepted");
+    failures += expect(logger.stopAndFlush(), "many-table stopAndFlush succeeds");
+    failures += expect(backend->rowsInserted.load(std::memory_order_relaxed) == 2, "many-table inserted one row per table");
+    failures += expect(backend->insertCalls.load(std::memory_order_relaxed) == 2, "many-table flushed both tables");
+    return failures;
+}
+
+// Verify exact and partial flushes reuse fixed column capacities across batches.
+int testFullPartialAndRepeatedBatchCapacities()
+{
+    MockBackend* backend = nullptr;
+    auto logger = makeLogger(backend, 16, 2);
+    if (!logger)
     {
-        std::printf("FAILED: SQLLOGGER_CONNECTION_STRING is not set for --real-sql.\n");
         return 1;
     }
 
     int failures = 0;
+    failures += expect(logger->autoRegisterTables(), "capacity autoRegisterTables succeeds");
+    failures += expect(logger->start(), "capacity logger starts");
+
+    const ImuData sample = makeSample(12);
+    failures += expect(logger->tryAutoWrite(12000, &sample, sizeof(sample)), "capacity first write accepted");
+    failures += expect(logger->tryAutoWrite(12001, &sample, sizeof(sample)), "capacity second write accepted");
+    failures += expect(waitUntil([&]() {
+                    return backend->insertCalls.load(std::memory_order_acquire) >= 1;
+                },
+                                std::chrono::milliseconds(1000)),
+                       "capacity full batch flushed");
+    failures += expect(logger->tryAutoWrite(12002, &sample, sizeof(sample)), "capacity partial write accepted");
+    failures += expect(logger->stopAndFlush(), "capacity stopAndFlush succeeds");
+
+    std::vector<std::size_t> rows;
+    bool stable = false;
+    {
+        std::lock_guard<std::mutex> lock(backend->recordMutex);
+        rows = backend->observedBatchRows;
+        stable = backend->observedCapacityStable;
+    }
+
+    failures += expect(rows.size() == 2, "capacity observed full and partial flushes");
+    if (rows.size() == 2)
+    {
+        failures += expect(rows[0] == 2, "capacity first flush full batch");
+        failures += expect(rows[1] == 1, "capacity second flush partial batch");
+    }
+    failures += expect(stable, "capacity column storage stayed preallocated");
+    return failures;
+}
+
+// Run a real SQL Server async smoke test and drop the dedicated table afterward.
+int testRealSqlSmoke(int argc, char** argv)
+{
+    std::string connectionString;
+    std::string connectionError;
+    if (!readConnectionString(argc, argv, connectionString, connectionError))
+    {
+        std::printf("FAILED: %s\n", connectionError.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+    bool tableMayExist = false;
     constexpr int kSampleCount = 1000;
 
     DataLoggerCore::DataLoggerConfig dataConfig;
@@ -823,63 +1145,155 @@ int testRealSqlSmoke()
         std::printf("FAILED: real SQL async initialize: %s\n", logger.lastError().message.c_str());
         failures += 1;
     }
-    else if (!logger.start())
-    {
-        std::printf("FAILED: real SQL async start: %s\n", logger.lastError().message.c_str());
-        failures += 1;
-    }
     else
     {
-        int accepted = 0;
-        for (int i = 0; i < kSampleCount; ++i)
+        tableMayExist = true;
+        if (!logger.start())
         {
-            const ImuData sample = makeSample(i);
-            if (logger.tryAutoWrite(9000000 + i, &sample, sizeof(sample)))
-            {
-                ++accepted;
-            }
-        }
-
-        failures += expect(logger.stopAndFlush(), "real SQL stopAndFlush succeeds");
-
-        const AsyncLogger::AsyncDataLoggerStats stats = logger.stats();
-        failures += expect(accepted == kSampleCount, "real SQL accepted all samples");
-        failures += expect(stats.droppedSamples == 0, "real SQL dropped no samples");
-
-        OdbcConnection connection;
-        if (!connection.connect(connectionString))
-        {
-            std::printf("FAILED: real SQL verification connect: %s\n", connection.error().c_str());
+            std::printf("FAILED: real SQL async start: %s\n", logger.lastError().message.c_str());
             failures += 1;
         }
         else
         {
-            RealSqlSummary summary;
-            if (!connection.querySmokeSummary(summary))
+            int accepted = 0;
+            for (int i = 0; i < kSampleCount; ++i)
             {
-                std::printf("FAILED: real SQL summary query: %s\n", connection.error().c_str());
+                const ImuData sample = makeSample(i);
+                if (logger.tryAutoWrite(9000000 + i, &sample, sizeof(sample)))
+                {
+                    ++accepted;
+                }
+            }
+
+            failures += expect(logger.stopAndFlush(), "real SQL stopAndFlush succeeds");
+
+            const AsyncLogger::AsyncDataLoggerStats stats = logger.stats();
+            failures += expect(accepted == kSampleCount, "real SQL accepted all samples");
+            failures += expect(stats.droppedSamples == 0, "real SQL dropped no samples");
+
+            OdbcConnection connection;
+            if (!connection.connect(connectionString))
+            {
+                std::printf("FAILED: real SQL verification connect: %s\n", connection.error().c_str());
                 failures += 1;
             }
             else
             {
-                failures += expect(summary.rowCount == accepted, "real SQL row count matches accepted samples");
-                failures += expect(std::fabs(summary.gyroMin - 1.0) < 0.0001, "real SQL gyro_0 min matches sample");
-                failures += expect(std::fabs(summary.gyroMax - 1.0) < 0.0001, "real SQL gyro_0 max matches sample");
-                failures += expect(summary.statusMin == 9, "real SQL status min matches sample");
-                failures += expect(summary.statusMax == 9, "real SQL status max matches sample");
+                RealSqlSummary summary;
+                if (!connection.querySmokeSummary(summary))
+                {
+                    std::printf("FAILED: real SQL summary query: %s\n", connection.error().c_str());
+                    failures += 1;
+                }
+                else
+                {
+                    failures += expect(summary.rowCount == accepted, "real SQL row count matches accepted samples");
+                    failures += expect(std::fabs(summary.gyroMin - 1.0) < 0.0001, "real SQL gyro_0 min matches sample");
+                    failures += expect(std::fabs(summary.gyroMax - 1.0) < 0.0001, "real SQL gyro_0 max matches sample");
+                    failures += expect(summary.statusMin == 9, "real SQL status min matches sample");
+                    failures += expect(summary.statusMax == 9, "real SQL status max matches sample");
+                }
             }
         }
     }
 
-    failures += expect(cleanupSmokeTable(connectionString), "real SQL smoke table cleanup succeeds");
+    if (tableMayExist)
+    {
+        failures += expect(cleanupSmokeTable(connectionString), "real SQL smoke table cleanup succeeds");
+    }
+
+    return failures;
+}
+
+// Run a long producer-only pressure loop and print latency distribution details.
+int runPressureChecks()
+{
+    constexpr int kCycles = 100000;
+    constexpr std::size_t kQueueCapacity = 131072;
+
+    MockBackend* backend = nullptr;
+    auto logger = makeLogger(backend, kQueueCapacity, kCycles);
+    if (!logger)
+    {
+        return 1;
+    }
+
+    int failures = 0;
+    failures += expect(logger->autoRegisterTables(), "pressure autoRegisterTables succeeds");
+    failures += expect(logger->start(), "pressure start succeeds");
+
+    const ImuData sample = makeSample(42);
+    std::vector<std::uint64_t> durations;
+    durations.resize(kCycles);
+
+    int accepted = 0;
+    for (int i = 0; i < kCycles; ++i)
+    {
+        const auto startedAt = Clock::now();
+        if (logger->tryAutoWrite(1000000 + i, &sample, sizeof(sample)))
+        {
+            ++accepted;
+        }
+
+        durations[static_cast<std::size_t>(i)] =
+            static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - startedAt).count());
+    }
+
+    failures += expect(logger->stopAndFlush(), "pressure stopAndFlush succeeds");
+    failures += expect(accepted == kCycles, "pressure accepted every sample");
+
+    auto percentile = [&](double fraction) -> std::uint64_t {
+        std::vector<std::uint64_t> copy = durations;
+        const std::size_t index = static_cast<std::size_t>((copy.size() - 1) * fraction);
+        std::nth_element(copy.begin(), copy.begin() + index, copy.end());
+        return copy[index];
+    };
+
+    const std::uint64_t p99 = percentile(0.99);
+    const std::uint64_t p999 = percentile(0.999);
+    const std::uint64_t maxDuration = *std::max_element(durations.begin(), durations.end());
+    const AsyncLogger::AsyncDataLoggerStats stats = logger->stats();
+
+    std::printf("PRESSURE producer_samples=%d accepted=%d dropped=%llu p99_ns=%llu p999_ns=%llu max_ns=%llu stats_try_push_max_ns=%llu max_queue_depth=%llu flush_max_ns=%llu rows_inserted=%llu\n",
+                kCycles,
+                accepted,
+                static_cast<unsigned long long>(stats.droppedSamples),
+                static_cast<unsigned long long>(p99),
+                static_cast<unsigned long long>(p999),
+                static_cast<unsigned long long>(maxDuration),
+                static_cast<unsigned long long>(stats.tryPushMaxNs),
+                static_cast<unsigned long long>(stats.maxQueueDepth),
+                static_cast<unsigned long long>(stats.flushMaxNs),
+                static_cast<unsigned long long>(backend->rowsInserted.load(std::memory_order_relaxed)));
+
+    return failures == 0 ? 0 : 1;
+}
+
+// Run all non-SQL checks that cover async behavior and typed column storage.
+int runUnitChecks()
+{
+    int failures = 0;
+    failures += testDefaults();
+    failures += testTryAutoWriteDrains();
+    failures += testQueueFullDropNewest();
+    failures += testQueueFullDropOldest();
+    failures += testTryWriteHandle();
+    failures += testRequestFlush();
+    failures += testStopAndFlush();
+    failures += testWorkerPriorities();
+    failures += testPayloadTooLarge();
+    failures += testProducerDoesNotCallBackend();
+    failures += testTypedColumnBatchAllNumericTypes();
+    failures += testGeneratedManyTableAutoWrite();
+    failures += testFullPartialAndRepeatedBatchCapacities();
     return failures;
 }
 }
 
-// Run the Phase 1 unit-style async logger checks, with optional real SQL smoke.
-int runPhase1Checks(int argc, char** argv)
+// Run the unit-style async logger checks, with optional real SQL smoke.
+int runPhaseChecks(int argc, char** argv)
 {
-    int failures = 0;
+    int failures = runUnitChecks();
     bool runRealSql = false;
     for (int i = 1; i < argc; ++i)
     {
@@ -902,7 +1316,7 @@ int runPhase1Checks(int argc, char** argv)
 
     if (runRealSql)
     {
-        failures += testRealSqlSmoke();
+        failures += testRealSqlSmoke(argc, argv);
     }
 
     if (failures == 0)
@@ -917,6 +1331,8 @@ int runPhase1Checks(int argc, char** argv)
 int main(int argc, char** argv)
 {
     bool runTests = false;
+    bool runPressure = false;
+    bool runAll = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -924,18 +1340,40 @@ int main(int argc, char** argv)
         {
             runTests = true;
         }
+        else if (argument == "--pressure")
+        {
+            runPressure = true;
+        }
+        else if (argument == "--all")
+        {
+            runAll = true;
+        }
+    }
+
+    if (runAll)
+    {
+        const int testResult = runPhaseChecks(argc, argv);
+        const int pressureResult = runPressureChecks();
+        return testResult == 0 && pressureResult == 0 ? 0 : 1;
+    }
+
+    if (runPressure)
+    {
+        return runPressureChecks();
     }
 
     if (runTests)
     {
-        return runPhase1Checks(argc, argv);
+        return runPhaseChecks(argc, argv);
     }
 
     // 1) Configure the synchronous logger: SQL connection, CSV schemas, table policy, and batch size.
-    const std::string connectionString = readConnectionString();
-    if (connectionString.empty())
+    std::string connectionString;
+    std::string connectionError;
+    if (!readConnectionString(argc, argv, connectionString, connectionError))
     {
-        std::printf("Set SQLLOGGER_CONNECTION_STRING, or run with --run-tests for mock checks.\n");
+        std::printf("%s\n", connectionError.c_str());
+        std::printf("Run with --run-tests for mock checks.\n");
         return 1;
     }
 

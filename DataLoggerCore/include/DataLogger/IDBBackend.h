@@ -5,7 +5,6 @@
 #include "DataLogger/Schema.h"
 
 #include <string>
-#include <vector>
 
 namespace DataLoggerCore
 {
@@ -23,13 +22,14 @@ public:
                                   const std::string& sqlSchemaName,
                                   ExistingTablePolicy policy) = 0;
 
-    // Prepare one reusable insert statement for each schema table.
+    // Prepare one reusable insert statement and reusable buffers for each table.
     virtual bool prepareInsertStatements(const SchemaRegistry& registry,
-                                         const std::string& sqlSchemaName) = 0;
+                                         const std::string& sqlSchemaName,
+                                         std::size_t batchSizeRows) = 0;
 
-    // Persist one decoded table batch; callers keep rows when this returns false.
+    // Persist one decoded column batch; callers keep rows when this returns false.
     virtual bool insertBatch(const TableSchema& table,
-                             const std::vector<DecodedRow>& rows) = 0;
+                             const ColumnBatch& batch) = 0;
 
     // Return the last backend error with optional ODBC diagnostics.
     virtual BackendError lastError() const = 0;

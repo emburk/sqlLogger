@@ -102,7 +102,7 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
         return false;
     }
 
-    if (!backend_->prepareInsertStatements(schemaRegistry_, config.sqlSchemaName))
+    if (!backend_->prepareInsertStatements(schemaRegistry_, config.sqlSchemaName, config.batchSizeRows))
     {
         setBackendError(ErrorCode::BackendPrepareFailed, "Backend insert preparation failed");
         resetRuntimeState();
@@ -115,7 +115,8 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
         TableBuffer buffer;
         buffer.handle = TableHandle(i);
         buffer.schema = &schemaRegistry_.tables[i];
-        tableBuffers_.push_back(buffer);
+        initializeColumnBatch(*buffer.schema, config.batchSizeRows, buffer.batch);
+        tableBuffers_.push_back(std::move(buffer));
     }
 
     initialized_ = true;
@@ -201,17 +202,19 @@ bool DataLogger::write(TableHandle table, std::int64_t timestampMs, const void* 
     }
 
     TableBuffer& buffer = tableBuffers_[table.index()];
-    DecodedRow row;
+    if (buffer.batch.rowCount >= buffer.batch.rowCapacity && !flush(table))
+    {
+        return false;
+    }
+
     DataLoggerError decodeError;
-    if (!decodeRow(*buffer.schema, timestampMs, structPtr, row, decodeError))
+    if (!decodeIntoColumnBatch(*buffer.schema, timestampMs, structPtr, buffer.batch, decodeError))
     {
         setError(decodeError);
         return false;
     }
 
-    buffer.rows.push_back(row);
-
-    if (buffer.rows.size() >= config_.batchSizeRows)
+    if (buffer.batch.rowCount >= config_.batchSizeRows)
     {
         return flush(table);
     }
@@ -260,7 +263,7 @@ bool DataLogger::flush()
 
     for (const TableBuffer& buffer : tableBuffers_)
     {
-        if (!buffer.rows.empty() && !flush(buffer.handle))
+        if (buffer.batch.rowCount > 0 && !flush(buffer.handle))
         {
             return false;
         }
@@ -287,18 +290,18 @@ bool DataLogger::flush(TableHandle table)
     }
 
     TableBuffer& buffer = tableBuffers_[table.index()];
-    if (buffer.rows.empty())
+    if (buffer.batch.rowCount == 0)
     {
         return true;
     }
 
-    if (!backend_->insertBatch(*buffer.schema, buffer.rows))
+    if (!backend_->insertBatch(*buffer.schema, buffer.batch))
     {
         setBackendError(ErrorCode::BackendInsertFailed, "Backend batch insert failed");
         return false;
     }
 
-    buffer.rows.clear();
+    buffer.batch.rowCount = 0;
     return true;
 }
 
