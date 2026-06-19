@@ -8,29 +8,51 @@ For split schemas that all map to the same source struct, `autoRegisterTables()`
 
 ## Project Layout
 
-- `DataLoggerCore/` - schema loading, validation, binary decoding, table handles, buffering, and flush orchestration.
-- `SqlServerBackend/` - SQL Server ODBC backend, DDL generation, prepared inserts, parameter arrays, diagnostics, and transactions.
-- `ExampleApp/` - minimal real-ODBC example app plus the retained test harness source.
-- `ExampleAppLib/` - separate Visual Studio solution that builds `DataLoggerCore` and `SqlServerBackend` as `.lib` projects and runs the example through those libraries.
-- `ExampleAppLibC/` - separate Visual Studio solution that consumes the same libraries through the C-compatible facade.
-- `ExampleApp/schemas/` - CSV schema files, one file per SQL table.
-- `tools/` - helper scripts for schema and Grafana dashboard generation.
-- `docs/` - requirements, architecture, design decisions, implementation plan, and test notes.
+```text
+sqlLogger/
+  README.md
+  DataLoggerCore/
+  SqlServerBackend/
+  AsyncLogger/
+  examples/
+    ExampleApp/
+      DataLoggerSolution.sln
+      DataLogger.vcxproj
+    ExampleAppLib/
+    ExampleAppLibC/
+  tools/
+  docs/
+```
+
+- `README.md` - repository entry point with build, run, schema, and tooling notes.
+- `DataLoggerCore/` - database-independent logger core: CSV schema loading, validation, binary decoding, table handles, column batching, buffering, and flush orchestration.
+- `SqlServerBackend/` - SQL Server implementation of the backend interface using real ODBC, generated DDL, prepared inserts, parameter-array binding, diagnostics, and transactions.
+- `AsyncLogger/` - optional outer async shell around the single-threaded logger/backend path; producer calls enqueue copied payloads while the worker owns logger calls.
+- `examples/` - all example applications and example Visual Studio solutions.
+- `examples/ExampleApp/` - shared C++ example application source, retained phase test harness source, example CSV schemas, and the retained monolithic example solution.
+- `examples/ExampleApp/DataLoggerSolution.sln` - retained monolithic example solution; builds one executable project that directly compiles core, backend, and `ExampleApp`.
+- `examples/ExampleApp/DataLogger.vcxproj` - single-project example used by `DataLoggerSolution.sln`.
+- `examples/ExampleApp/schemas/` - sample CSV table schemas; each file maps to one SQL table.
+- `examples/ExampleAppLib/` - C++ static-library consumption example; builds `DataLoggerCore` and `SqlServerBackend` as libraries, then links the example executable.
+- `examples/ExampleAppLibC/` - C facade consumption example; compiles a `.c` application against the public C wrappers.
+- `tools/` - helper scripts for generating DataLogger CSV schemas and Grafana dashboards.
+- `tools/examples/` - sample input/output files for the schema generator.
+- `docs/` - project requirements, architecture, design decisions, implementation notes, development logs, and moved agent/context notes.
 
 ## Build
 
-Open `DataLoggerSolution.sln` in Visual Studio 2019 to build the retained monolithic example project.
+Open `examples/ExampleApp/DataLoggerSolution.sln` in Visual Studio 2019 to build the retained monolithic example project.
 
-Open `ExampleAppLib/ExampleAppLib.sln` to build the library-based example. That solution produces static libraries for `DataLoggerCore` and `SqlServerBackend`, then links them into the `ExampleAppLib` executable.
+Open `examples/ExampleAppLib/ExampleAppLib.sln` to build the library-based example. That solution produces static libraries for `DataLoggerCore` and `SqlServerBackend`, then links them into the `ExampleAppLib` executable.
 
-Open `ExampleAppLibC/ExampleAppLibC.sln` to build the C facade example. It compiles `ExampleAppLibC/main.c` and includes only the public C headers.
+Open `examples/ExampleAppLibC/ExampleAppLibC.sln` to build the C facade example. It compiles `examples/ExampleAppLibC/main.c` and includes only the public C headers.
 
 From PowerShell:
 
 ```powershell
-& 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' DataLoggerSolution.sln /p:Configuration=Debug /p:Platform=x64 /m:1
-& 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' ExampleAppLib\ExampleAppLib.sln /p:Configuration=Debug /p:Platform=x64 /m:1
-& 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' ExampleAppLibC\ExampleAppLibC.sln /p:Configuration=Debug /p:Platform=x64 /m:1
+& 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' examples\ExampleApp\DataLoggerSolution.sln /p:Configuration=Debug /p:Platform=x64 /m:1
+& 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' examples\ExampleAppLib\ExampleAppLib.sln /p:Configuration=Debug /p:Platform=x64 /m:1
+& 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' examples\ExampleAppLibC\ExampleAppLibC.sln /p:Configuration=Debug /p:Platform=x64 /m:1
 ```
 
 The project targets C++17, Windows x64, and links `odbc32.lib`.
@@ -41,18 +63,18 @@ Set `SQLLOGGER_CONNECTION_STRING` to a SQL Server ODBC connection string, then r
 
 ```powershell
 $env:SQLLOGGER_CONNECTION_STRING = 'Driver={ODBC Driver 18 for SQL Server};Server=tcp:127.0.0.1,1433;Database=SensorDataDB;Uid=<user>;Pwd=<password>;Encrypt=no;TrustServerCertificate=yes;'
-.\x64\Debug\DataLogger.exe
+.\examples\ExampleApp\x64\Debug\DataLogger.exe
 ```
 
-By default, the example loads `ExampleApp/schemas/imu_data.csv`, creates/recreates `[dbo].[imu_data]` according to the configured table policy, writes two simple sensor rows, and flushes them.
+By default, the example loads `examples/ExampleApp/schemas/imu_data.csv`, creates/recreates `[dbo].[imu_data]` according to the configured table policy, writes two simple sensor rows, and flushes them.
 
 `dbo` is the default SQL Server schema name. In generated SQL, it is the schema qualifier in names such as `[dbo].[imu_data]`; changing `DataLoggerConfig::sqlSchemaName` writes the same generated tables under a different SQL Server schema, if that schema exists and the connection has permission to use it.
 
-The larger local AO stress payload is guarded by `LOCAL_TEST` in `ExampleApp/main.cpp`. Do not define `LOCAL_TEST` in committed project settings; define it only in a local developer configuration when that private/local payload should be used.
+The larger local AO stress payload is guarded by `LOCAL_TEST` in `examples/ExampleApp/main.cpp`. Do not define `LOCAL_TEST` in committed project settings; define it only in a local developer configuration when that private/local payload should be used.
 
 `DataLoggerConfig::printInfoFlag` and `DataLoggerConfig::printErrorFlag` are enabled by default. Successful initialization prints database setup details line by line, and recorded logger errors are printed line by line while remaining available through `lastError()`.
 
-`ExampleApp/test.cpp` contains the earlier smoke and Phase 9 validation harness. It is retained as a test-tool source file and is not compiled into the default example app. To repeat the old `DataLogger.exe --phase9-tests` run, temporarily switch the executable project entry source from `ExampleApp/main.cpp` to `ExampleApp/test.cpp`, rebuild, run the test command, then switch back to `ExampleApp/main.cpp` for the normal real-ODBC example.
+`examples/ExampleApp/test.cpp` contains the earlier smoke and Phase 9 validation harness. It is retained as a test-tool source file and is not compiled into the default example app. To repeat the old `DataLogger.exe --phase9-tests` run, temporarily switch the executable project entry source from `examples/ExampleApp/main.cpp` to `examples/ExampleApp/test.cpp`, rebuild, run the test command, then switch back to `examples/ExampleApp/main.cpp` for the normal real-ODBC example.
 
 ## Schema Format
 

@@ -369,7 +369,7 @@ A single `.vcxproj` keeps the project easy to open, build, and debug without req
 ### Consequence
 `DataLoggerCore` and `SqlServerBackend` are source-level modules rather than separate static-library projects initially. The single project links `odbc32.lib` and builds one example executable. Once the project settles, the same folder boundaries can be split back into multiple Visual Studio projects/libraries inside the solution.
 
-Current status: this decision describes the initial implementation path. The repository now also contains `DataLoggerCore/DataLoggerCore.vcxproj`, `SqlServerBackend/SqlServerBackend.vcxproj`, `ExampleAppLib/ExampleAppLib.sln`, and `ExampleAppLibC/ExampleAppLibC.sln` for static-library consumption while retaining the original monolithic solution.
+Current status: this decision describes the initial implementation path. The repository now also contains `DataLoggerCore/DataLoggerCore.vcxproj`, `SqlServerBackend/SqlServerBackend.vcxproj`, `examples/ExampleAppLib/ExampleAppLib.sln`, and `examples/ExampleAppLibC/ExampleAppLibC.sln` for static-library consumption while retaining the monolithic example solution at `examples/ExampleApp/DataLoggerSolution.sln`.
 
 ## DEC-030: Add configurable debug printing
 
@@ -396,7 +396,7 @@ Manual `registerTable()` and `write()` remain available for selective table usag
 ## DEC-032: Add a separate static-library example solution
 
 ### Decision
-Keep the original monolithic Visual Studio solution and add a separate `ExampleAppLib/ExampleAppLib.sln` solution that builds `DataLoggerCore` and `SqlServerBackend` as static library projects, then links them into an `ExampleAppLib` executable.
+Keep the original monolithic Visual Studio solution and add a separate `examples/ExampleAppLib/ExampleAppLib.sln` solution that builds `DataLoggerCore` and `SqlServerBackend` as static library projects, then links them into an `ExampleAppLib` executable.
 
 ### Reasoning
 The monolithic project remains useful as the original simple open/build path. The additional solution validates the intended library consumption model without moving source ownership or changing the runtime architecture.

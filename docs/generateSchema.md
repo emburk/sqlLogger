@@ -6,7 +6,7 @@ exported C/C++ struct layout CSV.
 ## Example
 
 ```powershell
-python tools\schemaGenerator.py ExampleApp\local\structLayout.csv ExampleApp\local\schemas\ao_main.csv --mode 3
+python tools\schemaGenerator.py examples\ExampleApp\local\structLayout.csv examples\ExampleApp\local\schemas\ao_main.csv --mode 3
 ```
 
 ## Inputs

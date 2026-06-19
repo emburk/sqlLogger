@@ -2,14 +2,14 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.28729.10
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DataLoggerCore", "..\DataLoggerCore\DataLoggerCore.vcxproj", "{2F7B67A1-1E0D-4D59-8F5E-1F9C3B75F611}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DataLoggerCore", "..\..\DataLoggerCore\DataLoggerCore.vcxproj", "{2F7B67A1-1E0D-4D59-8F5E-1F9C3B75F611}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SqlServerBackend", "..\SqlServerBackend\SqlServerBackend.vcxproj", "{B49D7050-D37F-46B5-A944-74A26214BD78}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SqlServerBackend", "..\..\SqlServerBackend\SqlServerBackend.vcxproj", "{B49D7050-D37F-46B5-A944-74A26214BD78}"
 	ProjectSection(ProjectDependencies) = postProject
 		{2F7B67A1-1E0D-4D59-8F5E-1F9C3B75F611} = {2F7B67A1-1E0D-4D59-8F5E-1F9C3B75F611}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ExampleAppLibC", "ExampleAppLibC.vcxproj", "{7D1BCB63-9F48-4427-AD34-2CD10204C5EC}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ExampleAppLib", "ExampleAppLib.vcxproj", "{84C2F940-DC11-4A6C-A845-4D0AC440E4D0}"
 	ProjectSection(ProjectDependencies) = postProject
 		{2F7B67A1-1E0D-4D59-8F5E-1F9C3B75F611} = {2F7B67A1-1E0D-4D59-8F5E-1F9C3B75F611}
 		{B49D7050-D37F-46B5-A944-74A26214BD78} = {B49D7050-D37F-46B5-A944-74A26214BD78}
@@ -29,10 +29,10 @@ Global
 		{B49D7050-D37F-46B5-A944-74A26214BD78}.Debug|x64.Build.0 = Debug|x64
 		{B49D7050-D37F-46B5-A944-74A26214BD78}.Release|x64.ActiveCfg = Release|x64
 		{B49D7050-D37F-46B5-A944-74A26214BD78}.Release|x64.Build.0 = Release|x64
-		{7D1BCB63-9F48-4427-AD34-2CD10204C5EC}.Debug|x64.ActiveCfg = Debug|x64
-		{7D1BCB63-9F48-4427-AD34-2CD10204C5EC}.Debug|x64.Build.0 = Debug|x64
-		{7D1BCB63-9F48-4427-AD34-2CD10204C5EC}.Release|x64.ActiveCfg = Release|x64
-		{7D1BCB63-9F48-4427-AD34-2CD10204C5EC}.Release|x64.Build.0 = Release|x64
+		{84C2F940-DC11-4A6C-A845-4D0AC440E4D0}.Debug|x64.ActiveCfg = Debug|x64
+		{84C2F940-DC11-4A6C-A845-4D0AC440E4D0}.Debug|x64.Build.0 = Debug|x64
+		{84C2F940-DC11-4A6C-A845-4D0AC440E4D0}.Release|x64.ActiveCfg = Release|x64
+		{84C2F940-DC11-4A6C-A845-4D0AC440E4D0}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

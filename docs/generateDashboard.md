@@ -5,7 +5,7 @@ Use `tools/grafanaDropdownGenerator.py` to generate a Grafana dashboard JSON fro
 ## Example
 
 ```powershell
-python tools\grafanaDropdownGenerator.py ExampleApp\local\schemas ExampleApp\local\grafana_dropdown_dashboard.json
+python tools\grafanaDropdownGenerator.py examples\ExampleApp\local\schemas examples\ExampleApp\local\grafana_dropdown_dashboard.json
 ```
 
 ## Inputs
@@ -16,7 +16,7 @@ python tools\grafanaDropdownGenerator.py ExampleApp\local\schemas ExampleApp\loc
 ## Optional Arguments
 
 ```powershell
-python tools\grafanaDropdownGenerator.py ExampleApp\local\schemas ExampleApp\local\grafana_dropdown_dashboard.json --datasource-uid MSSQL --sql-schema dbo --title "AO Telemetry"
+python tools\grafanaDropdownGenerator.py examples\ExampleApp\local\schemas examples\ExampleApp\local\grafana_dropdown_dashboard.json --datasource-uid MSSQL --sql-schema dbo --title "AO Telemetry"
 ```
 
 - `--datasource-uid`: Grafana SQL Server datasource UID. Default is `MSSQL`.
@@ -35,7 +35,7 @@ The generated JSON contains:
 - one query target per schema table inside that panel;
 - queries ordered by `timestamp_ms`.
 
-Import `ExampleApp\local\grafana_dropdown_dashboard.json` through Grafana's dashboard import UI.
+Import `examples\ExampleApp\local\grafana_dropdown_dashboard.json` through Grafana's dashboard import UI.
 
 ## Import in Grafana UI
 
@@ -43,7 +43,7 @@ Import `ExampleApp\local\grafana_dropdown_dashboard.json` through Grafana's dash
 2. In the left navigation, select **Dashboards**.
 3. Click **New** and choose **Import**.
 4. Click **Upload dashboard JSON file**.
-5. Select `ExampleApp\local\grafana_dropdown_dashboard.json`.
+5. Select `examples\ExampleApp\local\grafana_dropdown_dashboard.json`.
 6. Confirm the dashboard name and folder.
 7. Select the SQL Server datasource if Grafana asks for one.
 8. Click **Import**.

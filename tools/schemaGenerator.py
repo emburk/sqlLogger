@@ -13,7 +13,7 @@ Output CSV format:
     column_name,offset,datatype,size,length
 
 Usage example:
-    python tools\schemaGenerator.py ExampleApp\local\structLayout.csv ExampleApp\local\schemas\ao_main.csv --mode 3
+    python tools\schemaGenerator.py examples\ExampleApp\local\structLayout.csv examples\ExampleApp\local\schemas\ao_main.csv --mode 3
 
 Modes:
     0: Default. Expand every element into a scalar output row, length=1.

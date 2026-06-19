@@ -29,7 +29,7 @@ Application
 
 - Language: C++17.
 - IDE/project target: Visual Studio 2019, x64 solution with one C++ project initially.
-- Build shape: `DataLoggerCore`, `SqlServerBackend`, and `ExampleApp` are source-level modules inside the single project until the design settles enough to split into multiple projects/libraries.
+- Build shape: `DataLoggerCore` and `SqlServerBackend` have standalone static-library projects, while retained examples live under `examples/`.
 - Database: Microsoft SQL Server.
 - Database access: real ODBC implementation.
 - Backend interface: `IDBBackend` abstraction with `SqlServerOdbcBackend` implementation.

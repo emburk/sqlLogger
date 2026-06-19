@@ -358,7 +358,7 @@ std::string findSchemaDirectory()
     std::filesystem::path current = std::filesystem::current_path();
     for (int i = 0; i < 8; ++i)
     {
-        const std::filesystem::path candidate = current / "ExampleApp" / "schemas";
+        const std::filesystem::path candidate = current / "examples" / "ExampleApp" / "schemas";
         if (std::filesystem::exists(candidate))
         {
             return candidate.string();
@@ -372,7 +372,7 @@ std::string findSchemaDirectory()
         current = current.parent_path();
     }
 
-    return "ExampleApp\\schemas";
+    return "examples\\ExampleApp\\schemas";
 }
 
 // Find the dedicated async SQL smoke schema directory.
@@ -559,7 +559,7 @@ bool cleanupSmokeTable(const std::string& connectionString)
     return true;
 }
 
-// Build one deterministic payload whose layout matches ExampleApp/schemas/imu_data.csv.
+// Build one deterministic payload whose layout matches examples/ExampleApp/schemas/imu_data.csv.
 ImuData makeSample(std::int64_t sequence)
 {
     ImuData sample{};

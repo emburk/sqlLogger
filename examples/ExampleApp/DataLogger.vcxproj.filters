@@ -16,86 +16,86 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="DataLoggerCore\src\BinaryDecoder.cpp">
+    <ClCompile Include="..\..\DataLoggerCore\src\BinaryDecoder.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
-    <ClCompile Include="DataLoggerCore\src\DataLogger.cpp">
+    <ClCompile Include="..\..\DataLoggerCore\src\DataLogger.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
-    <ClCompile Include="DataLoggerCore\src\DataLoggerC.cpp">
+    <ClCompile Include="..\..\DataLoggerCore\src\DataLoggerC.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
-    <ClCompile Include="DataLoggerCore\src\DataLoggerCore.cpp">
+    <ClCompile Include="..\..\DataLoggerCore\src\DataLoggerCore.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
-    <ClCompile Include="DataLoggerCore\src\Schema.cpp">
+    <ClCompile Include="..\..\DataLoggerCore\src\Schema.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
-    <ClCompile Include="DataLoggerCore\src\SchemaLoaderCsv.cpp">
+    <ClCompile Include="..\..\DataLoggerCore\src\SchemaLoaderCsv.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
-    <ClCompile Include="DataLoggerCore\src\SchemaValidator.cpp">
+    <ClCompile Include="..\..\DataLoggerCore\src\SchemaValidator.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
-    <ClCompile Include="DataLoggerCore\src\TableHandle.cpp">
+    <ClCompile Include="..\..\DataLoggerCore\src\TableHandle.cpp">
       <Filter>DataLoggerCore</Filter>
     </ClCompile>
-    <ClCompile Include="SqlServerBackend\src\SqlServerBackend.cpp">
+    <ClCompile Include="..\..\SqlServerBackend\src\SqlServerBackend.cpp">
       <Filter>SqlServerBackend</Filter>
     </ClCompile>
-    <ClCompile Include="SqlServerBackend\src\SqlServerOdbcBackendC.cpp">
+    <ClCompile Include="..\..\SqlServerBackend\src\SqlServerOdbcBackendC.cpp">
       <Filter>SqlServerBackend</Filter>
     </ClCompile>
-    <ClCompile Include="ExampleApp\main.cpp">
+    <ClCompile Include="main.cpp">
       <Filter>ExampleApp</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\BinaryDecoder.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\BinaryDecoder.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\DataLogger.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\DataLogger.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\DataLoggerC.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\DataLoggerC.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\DataLoggerConfig.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\DataLoggerConfig.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\detail\DataLoggerCBridge.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\detail\DataLoggerCBridge.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\Error.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\Error.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\IDBBackend.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\IDBBackend.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\Schema.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\Schema.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\SchemaLoaderCsv.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\SchemaLoaderCsv.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\SchemaValidator.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\SchemaValidator.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\TableHandle.h">
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\TableHandle.h">
       <Filter>DataLoggerCore</Filter>
     </ClInclude>
-    <ClInclude Include="SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackend.h">
+    <ClInclude Include="..\..\SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackend.h">
       <Filter>SqlServerBackend</Filter>
     </ClInclude>
-    <ClInclude Include="SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackendC.h">
+    <ClInclude Include="..\..\SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackendC.h">
       <Filter>SqlServerBackend</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="ExampleApp\test.cpp">
+    <None Include="test.cpp">
       <Filter>ExampleApp</Filter>
     </None>
-    <None Include="ExampleApp\schemas\imu_data.csv">
+    <None Include="schemas\imu_data.csv">
       <Filter>ExampleApp\Schemas</Filter>
     </None>
   </ItemGroup>

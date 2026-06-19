@@ -36,7 +36,7 @@
     <ClCompile>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
-      <AdditionalIncludeDirectories>$(ProjectDir)DataLoggerCore\include;$(ProjectDir)SqlServerBackend\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\DataLoggerCore\include;$(ProjectDir)..\..\SqlServerBackend\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalDependencies>odbc32.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -46,43 +46,43 @@
     <ClCompile>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
-      <AdditionalIncludeDirectories>$(ProjectDir)DataLoggerCore\include;$(ProjectDir)SqlServerBackend\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\DataLoggerCore\include;$(ProjectDir)..\..\SqlServerBackend\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalDependencies>odbc32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="DataLoggerCore\src\BinaryDecoder.cpp" />
-    <ClCompile Include="DataLoggerCore\src\DataLogger.cpp" />
-    <ClCompile Include="DataLoggerCore\src\DataLoggerC.cpp" />
-    <ClCompile Include="DataLoggerCore\src\DataLoggerCore.cpp" />
-    <ClCompile Include="DataLoggerCore\src\Schema.cpp" />
-    <ClCompile Include="DataLoggerCore\src\SchemaLoaderCsv.cpp" />
-    <ClCompile Include="DataLoggerCore\src\SchemaValidator.cpp" />
-    <ClCompile Include="DataLoggerCore\src\TableHandle.cpp" />
-    <ClCompile Include="SqlServerBackend\src\SqlServerBackend.cpp" />
-    <ClCompile Include="SqlServerBackend\src\SqlServerOdbcBackendC.cpp" />
-    <ClCompile Include="ExampleApp\main.cpp" />
+    <ClCompile Include="..\..\DataLoggerCore\src\BinaryDecoder.cpp" />
+    <ClCompile Include="..\..\DataLoggerCore\src\DataLogger.cpp" />
+    <ClCompile Include="..\..\DataLoggerCore\src\DataLoggerC.cpp" />
+    <ClCompile Include="..\..\DataLoggerCore\src\DataLoggerCore.cpp" />
+    <ClCompile Include="..\..\DataLoggerCore\src\Schema.cpp" />
+    <ClCompile Include="..\..\DataLoggerCore\src\SchemaLoaderCsv.cpp" />
+    <ClCompile Include="..\..\DataLoggerCore\src\SchemaValidator.cpp" />
+    <ClCompile Include="..\..\DataLoggerCore\src\TableHandle.cpp" />
+    <ClCompile Include="..\..\SqlServerBackend\src\SqlServerBackend.cpp" />
+    <ClCompile Include="..\..\SqlServerBackend\src\SqlServerOdbcBackendC.cpp" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="DataLoggerCore\include\DataLogger\BinaryDecoder.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\DataLogger.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\DataLoggerC.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\DataLoggerConfig.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\detail\DataLoggerCBridge.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\Error.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\IDBBackend.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\Schema.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\SchemaLoaderCsv.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\SchemaValidator.h" />
-    <ClInclude Include="DataLoggerCore\include\DataLogger\TableHandle.h" />
-    <ClInclude Include="SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackend.h" />
-    <ClInclude Include="SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackendC.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\BinaryDecoder.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\DataLogger.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\DataLoggerC.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\DataLoggerConfig.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\detail\DataLoggerCBridge.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\Error.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\IDBBackend.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\Schema.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\SchemaLoaderCsv.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\SchemaValidator.h" />
+    <ClInclude Include="..\..\DataLoggerCore\include\DataLogger\TableHandle.h" />
+    <ClInclude Include="..\..\SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackend.h" />
+    <ClInclude Include="..\..\SqlServerBackend\include\SqlServerBackend\SqlServerOdbcBackendC.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="ExampleApp\test.cpp" />
-    <None Include="ExampleApp\schemas\imu_data.csv" />
+    <None Include="test.cpp" />
+    <None Include="schemas\imu_data.csv" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

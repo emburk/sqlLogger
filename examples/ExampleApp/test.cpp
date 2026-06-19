@@ -463,7 +463,7 @@ int main(int argc, char* argv[])
     const std::string connectionString = readConnectionString();
     DataLoggerCore::DataLoggerConfig config;
     config.connectionString = !connectionString.empty() ? connectionString : "SmokeTestBackend";
-    config.schemaDirectory = "ExampleApp\\schemas";
+    config.schemaDirectory = "examples\\ExampleApp\\schemas";
     config.batchSizeRows = 2;
 
     SmokeTestBackend* smokeBackendView = nullptr;

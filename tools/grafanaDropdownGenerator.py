@@ -6,7 +6,7 @@ multi-select Grafana query variable per table, and writes one timeseries panel
 with a separate MSSQL query target for every table.
 
 Example:
-    python tools/grafanaDropdownGenerator.py ExampleApp/local/schemas ExampleApp/local/grafana_dropdown_dashboard.json
+    python tools/grafanaDropdownGenerator.py examples/ExampleApp/local/schemas examples/ExampleApp/local/grafana_dropdown_dashboard.json
 """
 
 import argparse

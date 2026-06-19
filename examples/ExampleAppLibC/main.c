@@ -120,7 +120,7 @@ int main(void)
 
     datalogger_config_default_c(&config);
     config.connectionString = connectionString;
-    config.schemaDirectory = "ExampleApp\\schemas";
+    config.schemaDirectory = "examples\\ExampleApp\\schemas";
     config.batchSizeRows = kBatchSizeRows;
     config.existingTablePolicy = DATALOGGER_EXISTING_TABLE_POLICY_RENAME_WITH_TIMESTAMP_SUFFIX;
 

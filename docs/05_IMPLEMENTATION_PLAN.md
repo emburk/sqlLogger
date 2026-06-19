@@ -411,7 +411,7 @@ The actual offsets in CSV must match the chosen struct layout.
 Create:
 
 ```text
-ExampleApp/schemas/imu_data.csv
+examples/ExampleApp/schemas/imu_data.csv
 ```
 
 ### PLAN-803: Example initialization
@@ -485,7 +485,7 @@ The method shall require a prior successful `autoRegisterTables()` call and then
 Keep manual `registerTable()` and `write()` behavior unchanged. `autoWrite()` shall reuse the existing per-table decode, buffering, automatic batch flush, and failure-retention behavior.
 
 ### PLAN-1005: Update AO example
-Update `ExampleApp/main.cpp` to use `autoRegisterTables()` and `autoWrite()` instead of maintaining an explicit table-name list and manual per-table write loop.
+Update `examples/ExampleApp/main.cpp` to use `autoRegisterTables()` and `autoWrite()` instead of maintaining an explicit table-name list and manual per-table write loop.
 
 ## Phase 11: Suggested implementation order
 
@@ -507,7 +507,7 @@ Update `ExampleApp/main.cpp` to use `autoRegisterTables()` and `autoWrite()` ins
 ## Phase 12: Static library example solution
 
 ### PLAN-1201: Keep monolithic solution
-Leave the existing `DataLoggerSolution.sln` and `DataLogger.vcxproj` in place as the retained single-project build.
+Retain `examples/ExampleApp/DataLoggerSolution.sln` and `examples/ExampleApp/DataLogger.vcxproj` as the single-project example build.
 
 ### PLAN-1202: Add core static library project
 Create `DataLoggerCore/DataLoggerCore.vcxproj` as a Visual Studio 2019 static library project that owns only `DataLoggerCore` headers and sources.
@@ -516,10 +516,10 @@ Create `DataLoggerCore/DataLoggerCore.vcxproj` as a Visual Studio 2019 static li
 Create `SqlServerBackend/SqlServerBackend.vcxproj` as a Visual Studio 2019 static library project that depends on `DataLoggerCore` and owns only SQL Server backend headers and sources.
 
 ### PLAN-1204: Add library example solution
-Create `ExampleAppLib/ExampleAppLib.sln` with `DataLoggerCore`, `SqlServerBackend`, and an `ExampleAppLib` executable project.
+Create `examples/ExampleAppLib/ExampleAppLib.sln` with `DataLoggerCore`, `SqlServerBackend`, and an `ExampleAppLib` executable project.
 
 ### PLAN-1205: Reuse the existing example entry point
-Build the executable from `ExampleApp/main.cpp` so the monolithic and library-based examples use the same application source.
+Build the executable from `examples/ExampleApp/main.cpp` so the monolithic and library-based examples use the same application source.
 
 ### PLAN-1206: Preserve ODBC linkage
 Link the final executable against `odbc32.lib` while keeping database access inside the real SQL Server ODBC backend.
@@ -560,9 +560,9 @@ Leave `ExampleAppLib` and the monolithic example on their existing C++ public AP
 The C facade shall be added without replacing existing headers or changing current example behavior.
 
 ### PLAN-1308: Add C library example solution
-Create `ExampleAppLibC/ExampleAppLibC.sln` and `ExampleAppLibC/ExampleAppLibC.vcxproj`.
+Create `examples/ExampleAppLibC/ExampleAppLibC.sln` and `examples/ExampleAppLibC/ExampleAppLibC.vcxproj`.
 
-The executable shall compile a `.c` source file, include only the C facade headers for logger/backend access, reuse `ExampleApp/schemas/imu_data.csv`, and link against `DataLoggerCore`, `SqlServerBackend`, and `odbc32.lib`.
+The executable shall compile a `.c` source file, include only the C facade headers for logger/backend access, reuse `examples/ExampleApp/schemas/imu_data.csv`, and link against `DataLoggerCore`, `SqlServerBackend`, and `odbc32.lib`.
 
 ### PLAN-1309: Build verification
 Verify that the existing projects still build in Release x64 after adding the C wrapper headers and sources.

@@ -206,13 +206,14 @@ payload_status.csv
 The current repository includes both the retained monolithic build and separate static-library consumption examples:
 
 ```text
-DataLoggerSolution.sln
-DataLogger.vcxproj
 DataLoggerCore/
 SqlServerBackend/
-ExampleApp/
-ExampleAppLib/
-ExampleAppLibC/
+examples/
+  ExampleApp/
+    DataLoggerSolution.sln
+    DataLogger.vcxproj
+  ExampleAppLib/
+  ExampleAppLibC/
 tools/
 docs/
 ```
@@ -249,23 +250,24 @@ SqlServerBackend/
     SqlServerOdbcBackendC.cpp
   SqlServerBackend.vcxproj
 
-ExampleApp/
-  main.cpp
-  test.cpp
-  schemas/
-    imu_data.csv
-
-ExampleAppLib/
-  ExampleAppLib.sln
-  ExampleAppLib.vcxproj
-
-ExampleAppLibC/
-  ExampleAppLibC.sln
-  ExampleAppLibC.vcxproj
-  main.c
+examples/
+  ExampleApp/
+    DataLoggerSolution.sln
+    DataLogger.vcxproj
+    main.cpp
+    test.cpp
+    schemas/
+      imu_data.csv
+  ExampleAppLib/
+    ExampleAppLib.sln
+    ExampleAppLib.vcxproj
+  ExampleAppLibC/
+    ExampleAppLibC.sln
+    ExampleAppLibC.vcxproj
+    main.c
 ```
 
-`ExampleApp/test.cpp` contains the historical smoke and Phase 9 validation harness. The normal projects compile `ExampleApp/main.cpp`; to repeat the old `DataLogger.exe --phase9-tests` run, temporarily switch the executable project source to `ExampleApp/test.cpp`, rebuild, run the test, and then restore `ExampleApp/main.cpp`.
+`examples/ExampleApp/test.cpp` contains the historical smoke and Phase 9 validation harness. The normal projects compile `examples/ExampleApp/main.cpp`; to repeat the old `DataLogger.exe --phase9-tests` run, temporarily switch the executable project source to `examples/ExampleApp/test.cpp`, rebuild, run the test, and then restore `examples/ExampleApp/main.cpp`.
 
 ## Tooling note
 
