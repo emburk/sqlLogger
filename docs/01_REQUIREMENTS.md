@@ -341,14 +341,15 @@ If flush fails, the table buffer shall remain intact unless the transaction is k
 
 ## 9. Table lifecycle requirements
 
-### REQ-120: Table recreation during initialization
-During initialization, the logger shall create SQL tables from the loaded CSV schemas.
+### REQ-120: Table preparation during initialization
+During initialization, the logger shall prepare SQL tables from the loaded CSV schemas according to the configured existing-table policy.
 
 ### REQ-121: Existing table policy
-The table lifecycle shall support two policies:
+The table lifecycle shall support three policies:
 
 1. Delete/drop existing tables before recreation.
 2. Rename existing tables by appending a datetime suffix, then create fresh tables.
+3. Continue the current table by reusing an existing table when its SQL columns exactly match the CSV-expanded schema, or creating the table when it does not exist.
 
 ### REQ-122: Rename suffix format
 The rename suffix shall use:
@@ -367,7 +368,10 @@ imu_data_20260516-143012
 If a renamed target table already exists, the implementation shall append an extra numeric suffix or fail clearly.
 
 ### REQ-124: Fresh table creation
-After existing table handling, a fresh table shall be created for every schema file.
+After drop or rename existing-table handling, a fresh table shall be created for every schema file. Continue-current-table mode shall not recreate a matching existing table.
+
+### REQ-124A: Continue-current-table compatibility
+Continue-current-table mode shall validate existing SQL table metadata before preparing inserts. The existing table shall contain `timestamp_ms` as the first non-null `BIGINT` column, followed by exactly the CSV-expanded payload columns with matching SQL Server types and non-nullability. If the existing table does not match, initialization shall fail clearly before inserting rows.
 
 ### REQ-125: Schema-qualified tables
 The implementation shall support a SQL schema name, defaulting to `dbo`.

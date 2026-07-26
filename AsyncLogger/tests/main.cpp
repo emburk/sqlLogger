@@ -685,6 +685,9 @@ int testDefaults()
     int failures = 0;
 
     const AsyncLogger::AsyncDataLoggerConfig cppConfig;
+    const DataLoggerCore::DataLoggerConfig dataCppConfig;
+    failures += expect(dataCppConfig.existingTablePolicy == DataLoggerCore::ExistingTablePolicy::RenameWithTimestampSuffix,
+                       "C++ data logger default table policy remains rename");
     failures += expect(cppConfig.queueCapacity == 512, "C++ default queue capacity");
     failures += expect(cppConfig.maxPayloadBytes == 0, "C++ default max payload bytes");
     failures += expect(cppConfig.overflowPolicy == AsyncLogger::AsyncOverflowPolicy::DropNewest,
@@ -695,6 +698,11 @@ int testDefaults()
     failures += expect(!cppConfig.autoRegisterTablesOnStart, "C++ default auto register flag");
 
     AsyncDataLoggerConfig_c cConfig;
+    DataLoggerConfig_c dataCConfig;
+    datalogger_config_default_c(&dataCConfig);
+    failures += expect(dataCConfig.existingTablePolicy == DATALOGGER_EXISTING_TABLE_POLICY_RENAME_WITH_TIMESTAMP_SUFFIX,
+                       "C data logger default table policy remains rename");
+
     sql_logger_async_config_default_c(&cConfig);
     failures += expect(cConfig.queue_capacity == 512, "C default queue capacity");
     failures += expect(cConfig.max_payload_bytes == 0, "C default max payload bytes");
@@ -1148,6 +1156,7 @@ int testRealSqlSmoke(int argc, char** argv)
     else
     {
         tableMayExist = true;
+        int accepted = 0;
         if (!logger.start())
         {
             std::printf("FAILED: real SQL async start: %s\n", logger.lastError().message.c_str());
@@ -1155,7 +1164,6 @@ int testRealSqlSmoke(int argc, char** argv)
         }
         else
         {
-            int accepted = 0;
             for (int i = 0; i < kSampleCount; ++i)
             {
                 const ImuData sample = makeSample(i);
@@ -1192,6 +1200,58 @@ int testRealSqlSmoke(int argc, char** argv)
                     failures += expect(std::fabs(summary.gyroMax - 1.0) < 0.0001, "real SQL gyro_0 max matches sample");
                     failures += expect(summary.statusMin == 9, "real SQL status min matches sample");
                     failures += expect(summary.statusMax == 9, "real SQL status max matches sample");
+                }
+            }
+        }
+
+        DataLoggerCore::DataLoggerConfig appendConfig = dataConfig;
+        appendConfig.existingTablePolicy = DataLoggerCore::ExistingTablePolicy::ContinueCurrentTable;
+        auto appendBackend = std::make_unique<SqlServerBackend::SqlServerOdbcBackend>();
+        AsyncLogger::AsyncDataLogger appendLogger(std::move(appendBackend));
+        int appendAccepted = 0;
+
+        if (!appendLogger.initialize(appendConfig, asyncConfig))
+        {
+            std::printf("FAILED: real SQL append initialize: %s\n", appendLogger.lastError().message.c_str());
+            failures += 1;
+        }
+        else if (!appendLogger.start())
+        {
+            std::printf("FAILED: real SQL append start: %s\n", appendLogger.lastError().message.c_str());
+            failures += 1;
+        }
+        else
+        {
+            for (int i = 0; i < kSampleCount; ++i)
+            {
+                const ImuData sample = makeSample(i);
+                if (appendLogger.tryAutoWrite(9100000 + i, &sample, sizeof(sample)))
+                {
+                    ++appendAccepted;
+                }
+            }
+
+            failures += expect(appendLogger.stopAndFlush(), "real SQL append stopAndFlush succeeds");
+            failures += expect(appendAccepted == kSampleCount, "real SQL append accepted all samples");
+
+            OdbcConnection connection;
+            if (!connection.connect(connectionString))
+            {
+                std::printf("FAILED: real SQL append verification connect: %s\n", connection.error().c_str());
+                failures += 1;
+            }
+            else
+            {
+                RealSqlSummary summary;
+                if (!connection.querySmokeSummary(summary))
+                {
+                    std::printf("FAILED: real SQL append summary query: %s\n", connection.error().c_str());
+                    failures += 1;
+                }
+                else
+                {
+                    failures += expect(summary.rowCount == accepted + appendAccepted,
+                                       "real SQL continue-current-table appends rows");
                 }
             }
         }

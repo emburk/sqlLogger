@@ -243,10 +243,10 @@ The backend must disable autocommit around batch execution, commit on success, a
 ## DEC-019: Existing table policy is configurable
 
 ### Decision
-On initialization, existing tables are either dropped or renamed with a timestamp suffix before fresh tables are created.
+On initialization, existing tables are dropped, renamed with a timestamp suffix before fresh table creation, or reused in continue-current-table mode after schema compatibility validation.
 
 ### Reasoning
-This supports both destructive clean-run behavior and archive-preserving behavior.
+This supports destructive clean-run behavior, archive-preserving fresh-run behavior, and explicit append/continue behavior for callers that want to keep writing to the current table.
 
 ### Consequence
 The configuration must include `ExistingTablePolicy`.

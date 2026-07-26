@@ -21,7 +21,7 @@ public:
     // Open the SQL Server ODBC connection using the caller-provided connection string.
     bool connect(const std::string& connectionString) override;
 
-    // Apply existing-table policy, create fresh tables, and create timestamp indexes.
+    // Apply existing-table policy, prepare SQL tables, and create timestamp indexes.
     bool initializeTables(const DataLoggerCore::SchemaRegistry& registry,
                           const std::string& sqlSchemaName,
                           DataLoggerCore::ExistingTablePolicy policy) override;

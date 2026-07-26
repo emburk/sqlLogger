@@ -7,6 +7,7 @@
 #include <sqlext.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <ctime>
 #include <iomanip>
@@ -203,6 +204,24 @@ struct StatementInfo
     {
     }
 };
+
+struct ExistingColumnInfo
+{
+    std::string name;
+    std::string dataType;
+    int numericPrecision = 0;
+    int numericScale = 0;
+    bool nullable = true;
+};
+
+// Return a lowercase copy of SQL Server metadata type names for comparison.
+std::string lowerCopy(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
 
 // Return the C type used for binding one payload column.
 SQLSMALLINT cTypeFor(DataType datatype)
@@ -413,7 +432,7 @@ public:
         return true;
     }
 
-    // Recreate SQL tables from the schema registry and add timestamp indexes.
+    // Prepare SQL tables from the schema registry and add timestamp indexes.
     bool initializeTables(const SchemaRegistry& registry,
                           const std::string& sqlSchemaName,
                           ExistingTablePolicy policy)
@@ -436,9 +455,35 @@ public:
                     return false;
                 }
             }
-            else if (!renameExistingTable(sqlSchemaName, table.tableName, suffix))
+            else if (policy == ExistingTablePolicy::RenameWithTimestampSuffix)
             {
-                return false;
+                if (!renameExistingTable(sqlSchemaName, table.tableName, suffix))
+                {
+                    return false;
+                }
+            }
+            else if (policy == ExistingTablePolicy::ContinueCurrentTable)
+            {
+                bool exists = false;
+                if (!tableExists(sqlSchemaName, table.tableName, exists))
+                {
+                    return false;
+                }
+
+                if (exists)
+                {
+                    if (!validateExistingTable(sqlSchemaName, table))
+                    {
+                        return false;
+                    }
+
+                    if (!createTimestampIndex(sqlSchemaName, table))
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
             }
 
             if (!createTable(sqlSchemaName, table) || !createTimestampIndex(sqlSchemaName, table))
@@ -659,6 +704,69 @@ private:
         return true;
     }
 
+    // Execute a scalar integer SQL query and report a clear backend error on failure.
+    bool executeIntegerScalar(const std::string& sql,
+                              const std::string& context,
+                              int& value)
+    {
+        OdbcHandle statement(SQL_HANDLE_STMT);
+        if (!statement.allocate(connection_.get()))
+        {
+            setError("Unable to allocate statement for " + context + ".", SQL_HANDLE_DBC, connection_.get());
+            return false;
+        }
+
+        SQLRETURN result = SQLExecDirectA(statement.get(),
+                                          reinterpret_cast<SQLCHAR*>(const_cast<char*>(sql.c_str())),
+                                          SQL_NTS);
+        if (!isOdbcSuccess(result))
+        {
+            setError("SQL execution failed while " + context + ".", SQL_HANDLE_STMT, statement.get());
+            return false;
+        }
+
+        result = SQLFetch(statement.get());
+        if (result == SQL_NO_DATA)
+        {
+            setError("SQL query returned no rows while " + context + ".");
+            return false;
+        }
+
+        if (!isOdbcSuccess(result))
+        {
+            setError("SQL fetch failed while " + context + ".", SQL_HANDLE_STMT, statement.get());
+            return false;
+        }
+
+        SQLLEN indicator = 0;
+        result = SQLGetData(statement.get(), 1, SQL_C_SLONG, &value, sizeof(value), &indicator);
+        if (!isOdbcSuccess(result) || indicator == SQL_NULL_DATA)
+        {
+            setError("SQL scalar read failed while " + context + ".", SQL_HANDLE_STMT, statement.get());
+            return false;
+        }
+
+        return true;
+    }
+
+    // Check whether the target user table already exists in SQL Server.
+    bool tableExists(const std::string& sqlSchemaName,
+                     const std::string& tableName,
+                     bool& exists)
+    {
+        const std::string qualifiedName = qualifiedTableName(sqlSchemaName, tableName);
+        const std::string sql =
+            "SELECT CASE WHEN OBJECT_ID(" + quoteSqlString(qualifiedName) + ", N'U') IS NULL THEN 0 ELSE 1 END;";
+        int result = 0;
+        if (!executeIntegerScalar(sql, "checking table existence for '" + tableName + "'", result))
+        {
+            return false;
+        }
+
+        exists = result != 0;
+        return true;
+    }
+
     // Drop an existing table if one is present.
     bool dropExistingTable(const std::string& sqlSchemaName, const std::string& tableName)
     {
@@ -691,6 +799,181 @@ private:
         return executeDirect(sql, "renaming existing table '" + tableName + "'");
     }
 
+    // Load SQL Server column metadata in ordinal order for schema compatibility checks.
+    bool loadExistingColumns(const std::string& sqlSchemaName,
+                             const std::string& tableName,
+                             std::vector<ExistingColumnInfo>& columns)
+    {
+        columns.clear();
+
+        OdbcHandle statement(SQL_HANDLE_STMT);
+        if (!statement.allocate(connection_.get()))
+        {
+            setError("Unable to allocate statement for loading metadata for table '" + tableName + "'.", SQL_HANDLE_DBC, connection_.get());
+            return false;
+        }
+
+        const std::string sql =
+            "SELECT COLUMN_NAME, DATA_TYPE, "
+            "COALESCE(CAST(NUMERIC_PRECISION AS int), 0), "
+            "COALESCE(CAST(NUMERIC_SCALE AS int), 0), "
+            "IS_NULLABLE "
+            "FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_SCHEMA = " + quoteSqlString(sqlSchemaName) +
+            " AND TABLE_NAME = " + quoteSqlString(tableName) +
+            " ORDER BY ORDINAL_POSITION;";
+
+        SQLRETURN result = SQLExecDirectA(statement.get(),
+                                          reinterpret_cast<SQLCHAR*>(const_cast<char*>(sql.c_str())),
+                                          SQL_NTS);
+        if (!isOdbcSuccess(result))
+        {
+            setError("SQL execution failed while loading metadata for table '" + tableName + "'.", SQL_HANDLE_STMT, statement.get());
+            return false;
+        }
+
+        while ((result = SQLFetch(statement.get())) != SQL_NO_DATA)
+        {
+            if (!isOdbcSuccess(result))
+            {
+                setError("SQL fetch failed while loading metadata for table '" + tableName + "'.", SQL_HANDLE_STMT, statement.get());
+                return false;
+            }
+
+            char columnName[256] = {};
+            char dataType[128] = {};
+            char isNullable[8] = {};
+            SQLINTEGER precision = 0;
+            SQLINTEGER scale = 0;
+            SQLLEN indicator = 0;
+
+            if (!readTextColumn(statement.get(), 1, columnName, sizeof(columnName), indicator, tableName) ||
+                !readTextColumn(statement.get(), 2, dataType, sizeof(dataType), indicator, tableName) ||
+                !readIntegerColumn(statement.get(), 3, precision, tableName) ||
+                !readIntegerColumn(statement.get(), 4, scale, tableName) ||
+                !readTextColumn(statement.get(), 5, isNullable, sizeof(isNullable), indicator, tableName))
+            {
+                return false;
+            }
+
+            ExistingColumnInfo column;
+            column.name = columnName;
+            column.dataType = lowerCopy(dataType);
+            column.numericPrecision = static_cast<int>(precision);
+            column.numericScale = static_cast<int>(scale);
+            column.nullable = std::string(isNullable) == "YES";
+            columns.push_back(column);
+        }
+
+        return true;
+    }
+
+    // Read one text metadata column into a fixed caller-provided buffer.
+    bool readTextColumn(SQLHSTMT statement,
+                        SQLUSMALLINT column,
+                        char* buffer,
+                        SQLLEN bufferSize,
+                        SQLLEN& indicator,
+                        const std::string& tableName)
+    {
+        SQLRETURN result = SQLGetData(statement, column, SQL_C_CHAR, buffer, bufferSize, &indicator);
+        if (!isOdbcSuccess(result) || indicator == SQL_NULL_DATA)
+        {
+            setError("SQL metadata read failed for table '" + tableName + "'.", SQL_HANDLE_STMT, statement);
+            return false;
+        }
+
+        return true;
+    }
+
+    // Read one integer metadata column into the caller-provided output value.
+    bool readIntegerColumn(SQLHSTMT statement,
+                           SQLUSMALLINT column,
+                           SQLINTEGER& value,
+                           const std::string& tableName)
+    {
+        SQLLEN indicator = 0;
+        SQLRETURN result = SQLGetData(statement, column, SQL_C_SLONG, &value, sizeof(value), &indicator);
+        if (!isOdbcSuccess(result) || indicator == SQL_NULL_DATA)
+        {
+            setError("SQL numeric metadata read failed for table '" + tableName + "'.", SQL_HANDLE_STMT, statement);
+            return false;
+        }
+
+        return true;
+    }
+
+    // Verify an existing SQL table exactly matches the logger-generated schema.
+    bool validateExistingTable(const std::string& sqlSchemaName, const TableSchema& table)
+    {
+        std::vector<ExistingColumnInfo> columns;
+        if (!loadExistingColumns(sqlSchemaName, table.tableName, columns))
+        {
+            return false;
+        }
+
+        const std::size_t expectedColumnCount = table.expandedColumns.size() + 1;
+        if (columns.size() != expectedColumnCount)
+        {
+            setError("Existing table '" + table.tableName + "' has " + std::to_string(columns.size()) +
+                     " columns, but the CSV schema expects " + std::to_string(expectedColumnCount) + ".");
+            return false;
+        }
+
+        if (!matchesTimestampColumn(columns[0]))
+        {
+            setError("Existing table '" + table.tableName + "' does not have a non-null BIGINT timestamp_ms first column.");
+            return false;
+        }
+
+        for (std::size_t i = 0; i < table.expandedColumns.size(); ++i)
+        {
+            const ExistingColumnInfo& actual = columns[i + 1];
+            const DataLoggerCore::ExpandedColumnSchema& expected = table.expandedColumns[i];
+            if (actual.name != expected.sqlName || actual.nullable || !matchesDataColumn(actual, expected.datatype))
+            {
+                setError("Existing table '" + table.tableName + "' column '" + actual.name +
+                         "' does not match CSV column '" + expected.sqlName + "'.");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Check the generated timestamp column contract for continue-current-table mode.
+    bool matchesTimestampColumn(const ExistingColumnInfo& column) const
+    {
+        return column.name == "timestamp_ms" && column.dataType == "bigint" && !column.nullable;
+    }
+
+    // Check one existing SQL column against the storage type generated for a CSV field.
+    bool matchesDataColumn(const ExistingColumnInfo& column, DataType datatype) const
+    {
+        switch (datatype)
+        {
+        case DataType::Int8:
+        case DataType::Int16:
+            return column.dataType == "smallint";
+        case DataType::UInt8:
+            return column.dataType == "tinyint";
+        case DataType::UInt16:
+        case DataType::Int32:
+            return column.dataType == "int";
+        case DataType::UInt32:
+        case DataType::Int64:
+            return column.dataType == "bigint";
+        case DataType::UInt64:
+            return column.dataType == "decimal" && column.numericPrecision == 20 && column.numericScale == 0;
+        case DataType::Float:
+            return column.dataType == "real";
+        case DataType::Double:
+            return column.dataType == "float" && column.numericPrecision == 53;
+        }
+
+        return false;
+    }
+
     // Create one SQL Server table from a validated table schema.
     bool createTable(const std::string& sqlSchemaName, const TableSchema& table)
     {
@@ -713,8 +996,12 @@ private:
     {
         const std::string indexName = "IX_" + table.tableName + "_timestamp_ms";
         const std::string sql =
-            "CREATE INDEX " + quoteIdentifier(indexName) + " ON " +
-            qualifiedTableName(sqlSchemaName, table.tableName) + " ([timestamp_ms]);";
+            "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = " + quoteSqlString(indexName) +
+            " AND object_id = OBJECT_ID(" + quoteSqlString(qualifiedTableName(sqlSchemaName, table.tableName)) + ", N'U'))\n"
+            "BEGIN\n"
+            "    CREATE INDEX " + quoteIdentifier(indexName) + " ON " +
+            qualifiedTableName(sqlSchemaName, table.tableName) + " ([timestamp_ms]);\n"
+            "END;";
         return executeDirect(sql, "creating timestamp index for table '" + table.tableName + "'");
     }
 
@@ -994,7 +1281,7 @@ bool SqlServerOdbcBackend::connect(const std::string& connectionString)
     return impl_->connect(connectionString);
 }
 
-// Apply existing-table policy, create fresh tables, and create timestamp indexes.
+// Apply existing-table policy, prepare SQL tables, and create timestamp indexes.
 bool SqlServerOdbcBackend::initializeTables(const SchemaRegistry& registry,
                                             const std::string& sqlSchemaName,
                                             ExistingTablePolicy policy)

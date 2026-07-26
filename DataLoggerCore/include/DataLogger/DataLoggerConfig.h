@@ -8,7 +8,8 @@ namespace DataLoggerCore
 enum class ExistingTablePolicy
 {
     Drop,
-    RenameWithTimestampSuffix
+    RenameWithTimestampSuffix,
+    ContinueCurrentTable
 };
 
 struct DataLoggerConfig

@@ -71,6 +71,8 @@ logger.flush();
 
 `dbo` is SQL Server's common default schema. The logger uses `DataLoggerConfig::sqlSchemaName` to generate schema-qualified table names such as `[dbo].[imu_data]`; callers can set another schema name when the target database and permissions require it.
 
+`DataLoggerConfig::existingTablePolicy` defaults to `RenameWithTimestampSuffix`. Callers may explicitly select `ContinueCurrentTable` to append to a matching existing SQL table; the backend validates the existing table metadata before preparing inserts.
+
 ## What the schema looks like
 
 Example file:

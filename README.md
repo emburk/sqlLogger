@@ -68,6 +68,8 @@ $env:SQLLOGGER_CONNECTION_STRING = 'Driver={ODBC Driver 18 for SQL Server};Serve
 
 By default, the example loads `examples/ExampleApp/schemas/imu_data.csv`, creates/recreates `[dbo].[imu_data]` according to the configured table policy, writes two simple sensor rows, and flushes them.
 
+`DataLoggerConfig::existingTablePolicy` still defaults to `RenameWithTimestampSuffix`. To continue appending to the current table, explicitly set `ExistingTablePolicy::ContinueCurrentTable`; SQL Server will reuse the table only when its metadata matches the CSV schema.
+
 `dbo` is the default SQL Server schema name. In generated SQL, it is the schema qualifier in names such as `[dbo].[imu_data]`; changing `DataLoggerConfig::sqlSchemaName` writes the same generated tables under a different SQL Server schema, if that schema exists and the connection has permission to use it.
 
 The larger local AO stress payload is guarded by `LOCAL_TEST` in `examples/ExampleApp/main.cpp`. Do not define `LOCAL_TEST` in committed project settings; define it only in a local developer configuration when that private/local payload should be used.

@@ -19,6 +19,8 @@ const char* existingTablePolicyName(ExistingTablePolicy policy)
         return "Drop";
     case ExistingTablePolicy::RenameWithTimestampSuffix:
         return "RenameWithTimestampSuffix";
+    case ExistingTablePolicy::ContinueCurrentTable:
+        return "ContinueCurrentTable";
     }
 
     return "Unknown";

@@ -186,7 +186,8 @@ Suggested configuration object:
 enum class ExistingTablePolicy
 {
     Drop,
-    RenameWithTimestampSuffix
+    RenameWithTimestampSuffix,
+    ContinueCurrentTable
 };
 
 struct DataLoggerConfig
@@ -450,6 +451,8 @@ IF OBJECT_ID(N'[dbo].[imu_data]', N'U') IS NOT NULL
 ```
 
 If `ExistingTablePolicy::RenameWithTimestampSuffix`, rename first, then create a fresh table.
+
+If `ExistingTablePolicy::ContinueCurrentTable`, check whether the configured table already exists. A missing table is created from the CSV schema. An existing table is reused only when its metadata exactly matches the generated schema; otherwise initialization fails before inserts are prepared.
 
 Suggested suffix:
 

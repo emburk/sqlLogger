@@ -30,6 +30,9 @@ bool convertPolicy(DataLoggerExistingTablePolicy_c input,
     case DATALOGGER_EXISTING_TABLE_POLICY_RENAME_WITH_TIMESTAMP_SUFFIX:
         output = DataLoggerCore::ExistingTablePolicy::RenameWithTimestampSuffix;
         return true;
+    case DATALOGGER_EXISTING_TABLE_POLICY_CONTINUE_CURRENT_TABLE:
+        output = DataLoggerCore::ExistingTablePolicy::ContinueCurrentTable;
+        return true;
     }
 
     return false;

@@ -17,7 +17,7 @@ public:
     // Open the backend connection using the configured ODBC connection string.
     virtual bool connect(const std::string& connectionString) = 0;
 
-    // Apply existing-table policy and create fresh tables for the loaded schemas.
+    // Apply existing-table policy and prepare SQL tables for the loaded schemas.
     virtual bool initializeTables(const SchemaRegistry& registry,
                                   const std::string& sqlSchemaName,
                                   ExistingTablePolicy policy) = 0;

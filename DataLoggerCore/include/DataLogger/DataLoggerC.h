@@ -13,7 +13,8 @@ typedef struct DataLoggerBackend_c DataLoggerBackend_c;
 typedef enum DataLoggerExistingTablePolicy_c
 {
     DATALOGGER_EXISTING_TABLE_POLICY_DROP = 0,
-    DATALOGGER_EXISTING_TABLE_POLICY_RENAME_WITH_TIMESTAMP_SUFFIX = 1
+    DATALOGGER_EXISTING_TABLE_POLICY_RENAME_WITH_TIMESTAMP_SUFFIX = 1,
+    DATALOGGER_EXISTING_TABLE_POLICY_CONTINUE_CURRENT_TABLE = 2
 } DataLoggerExistingTablePolicy_c;
 
 typedef struct DataLoggerConfig_c
