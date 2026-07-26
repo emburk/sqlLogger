@@ -2,6 +2,7 @@
 #include "AsyncLogger/SqlLoggerC.h"
 
 #include "DataLogger/BinaryDecoder.h"
+#include "DataLogger/DataLogger.h"
 #include "DataLogger/IDBBackend.h"
 #include "DataLogger/Schema.h"
 #include "SqlServerBackend/SqlServerOdbcBackend.h"
@@ -74,11 +75,13 @@ public:
     // Record table initialization calls while leaving table metadata unchanged.
     bool initializeTables(const DataLoggerCore::SchemaRegistry& registry,
                           const std::string& sqlSchemaName,
-                          DataLoggerCore::ExistingTablePolicy policy) override
+                          DataLoggerCore::ExistingTablePolicy policy,
+                          DataLoggerCore::SqlServerIndexMode indexMode) override
     {
         (void)registry;
         (void)sqlSchemaName;
         (void)policy;
+        (void)indexMode;
         initializeCalls.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
@@ -158,6 +161,17 @@ struct RealSqlSummary
     double gyroMax = 0.0;
     std::int64_t statusMin = 0;
     std::int64_t statusMax = 0;
+};
+
+struct SqlIndexBenchmarkResult
+{
+    const char* modeName = "";
+    std::size_t requestedRows = 0;
+    std::int64_t storedRows = 0;
+    double initializeMs = 0.0;
+    double insertAndFlushMs = 0.0;
+    double queryMs = 0.0;
+    double rowsPerSecond = 0.0;
 };
 
 class OdbcConnection
@@ -536,6 +550,54 @@ bool readConnectionString(int argc,
     return false;
 }
 
+// Read a positive size_t option in either "--name value" or "--name=value" form.
+bool readSizeArgument(int argc,
+                      char** argv,
+                      const std::string& optionName,
+                      std::size_t defaultValue,
+                      std::size_t& value,
+                      std::string& error)
+{
+    value = defaultValue;
+    const std::string inlinePrefix = optionName + "=";
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string argument = argv[i];
+        std::string text;
+        if (argument == optionName)
+        {
+            if (i + 1 >= argc)
+            {
+                error = optionName + " requires a following value.";
+                return false;
+            }
+
+            text = argv[++i];
+        }
+        else if (argument.rfind(inlinePrefix, 0) == 0)
+        {
+            text = argument.substr(inlinePrefix.size());
+        }
+        else
+        {
+            continue;
+        }
+
+        char* end = nullptr;
+        const unsigned long long parsed = std::strtoull(text.c_str(), &end, 10);
+        if (text.empty() || end == text.c_str() || *end != '\0' || parsed == 0)
+        {
+            error = optionName + " must be a positive integer.";
+            return false;
+        }
+
+        value = static_cast<std::size_t>(parsed);
+        return true;
+    }
+
+    return true;
+}
+
 // Drop the dedicated smoke table created by the real SQL test.
 bool cleanupSmokeTable(const std::string& connectionString)
 {
@@ -557,6 +619,12 @@ bool cleanupSmokeTable(const std::string& connectionString)
     }
 
     return true;
+}
+
+// Return elapsed milliseconds for compact benchmark reporting.
+double elapsedMs(Clock::time_point begin, Clock::time_point end)
+{
+    return std::chrono::duration<double, std::milli>(end - begin).count();
 }
 
 // Build one deterministic payload whose layout matches examples/ExampleApp/schemas/imu_data.csv.
@@ -587,6 +655,197 @@ DataLoggerCore::DataLoggerConfig makeDataConfig(std::size_t batchSizeRows)
     config.printInfoFlag = false;
     config.printErrorFlag = false;
     return config;
+}
+
+// Run one real SQL logging benchmark for the requested SQL Server index mode.
+bool runSqlIndexBenchmarkMode(const std::string& connectionString,
+                              DataLoggerCore::SqlServerIndexMode indexMode,
+                              const char* modeName,
+                              std::size_t rowCount,
+                              std::size_t batchSizeRows,
+                              SqlIndexBenchmarkResult& result)
+{
+    result = {};
+    result.modeName = modeName;
+    result.requestedRows = rowCount;
+
+    if (!cleanupSmokeTable(connectionString))
+    {
+        return false;
+    }
+
+    DataLoggerCore::DataLoggerConfig dataConfig;
+    dataConfig.connectionString = connectionString;
+    dataConfig.schemaDirectory = findAsyncSmokeSchemaDirectory();
+    dataConfig.sqlSchemaName = "dbo";
+    dataConfig.batchSizeRows = batchSizeRows;
+    dataConfig.existingTablePolicy = DataLoggerCore::ExistingTablePolicy::Drop;
+    dataConfig.sqlServerIndexMode = indexMode;
+    dataConfig.printInfoFlag = false;
+    dataConfig.printErrorFlag = false;
+
+    {
+        auto backend = std::make_unique<SqlServerBackend::SqlServerOdbcBackend>();
+        DataLoggerCore::DataLogger logger(std::move(backend));
+
+        const Clock::time_point initBegin = Clock::now();
+        if (!logger.initialize(dataConfig))
+        {
+            std::printf("FAILED: %s initialize: %s\n", modeName, logger.lastError().message.c_str());
+            return false;
+        }
+
+        if (!logger.autoRegisterTables())
+        {
+            std::printf("FAILED: %s autoRegisterTables: %s\n", modeName, logger.lastError().message.c_str());
+            return false;
+        }
+
+        result.initializeMs = elapsedMs(initBegin, Clock::now());
+
+        const Clock::time_point insertBegin = Clock::now();
+        for (std::size_t i = 0; i < rowCount; ++i)
+        {
+            const ImuData sample = makeSample(static_cast<std::int64_t>(i));
+            if (!logger.autoWrite(1000000000LL + static_cast<std::int64_t>(i), &sample))
+            {
+                std::printf("FAILED: %s autoWrite row %llu: %s\n",
+                            modeName,
+                            static_cast<unsigned long long>(i),
+                            logger.lastError().message.c_str());
+                return false;
+            }
+        }
+
+        if (!logger.flush())
+        {
+            std::printf("FAILED: %s flush: %s\n", modeName, logger.lastError().message.c_str());
+            return false;
+        }
+
+        result.insertAndFlushMs = elapsedMs(insertBegin, Clock::now());
+        if (result.insertAndFlushMs > 0.0)
+        {
+            result.rowsPerSecond = static_cast<double>(rowCount) / (result.insertAndFlushMs / 1000.0);
+        }
+    }
+
+    OdbcConnection queryConnection;
+    if (!queryConnection.connect(connectionString))
+    {
+        std::printf("FAILED: %s query connect: %s\n", modeName, queryConnection.error().c_str());
+        cleanupSmokeTable(connectionString);
+        return false;
+    }
+
+    RealSqlSummary summary;
+    const Clock::time_point queryBegin = Clock::now();
+    if (!queryConnection.querySmokeSummary(summary))
+    {
+        std::printf("FAILED: %s summary query: %s\n", modeName, queryConnection.error().c_str());
+        cleanupSmokeTable(connectionString);
+        return false;
+    }
+
+    result.queryMs = elapsedMs(queryBegin, Clock::now());
+    result.storedRows = summary.rowCount;
+    if (result.storedRows != static_cast<std::int64_t>(rowCount))
+    {
+        std::printf("FAILED: %s stored %lld rows, expected %llu rows.\n",
+                    modeName,
+                    static_cast<long long>(result.storedRows),
+                    static_cast<unsigned long long>(rowCount));
+        cleanupSmokeTable(connectionString);
+        return false;
+    }
+
+    if (!cleanupSmokeTable(connectionString))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+// Compare default rowstore indexing against optional nonclustered columnstore indexing.
+int runSqlIndexBenchmark(int argc, char** argv)
+{
+    std::string connectionString;
+    std::string error;
+    if (!readConnectionString(argc, argv, connectionString, error))
+    {
+        std::printf("FAILED: %s\n", error.c_str());
+        return 1;
+    }
+
+    std::size_t rowCount = 250000;
+    if (!readSizeArgument(argc, argv, "--benchmark-rows", rowCount, rowCount, error))
+    {
+        std::printf("FAILED: %s\n", error.c_str());
+        return 1;
+    }
+
+    std::size_t batchSizeRows = 1000;
+    if (!readSizeArgument(argc, argv, "--benchmark-batch", batchSizeRows, batchSizeRows, error))
+    {
+        std::printf("FAILED: %s\n", error.c_str());
+        return 1;
+    }
+
+    SqlIndexBenchmarkResult rowstore;
+    SqlIndexBenchmarkResult columnstore;
+    const bool rowstoreOk = runSqlIndexBenchmarkMode(connectionString,
+                                                     DataLoggerCore::SqlServerIndexMode::RowstoreTimestampOnly,
+                                                     "rowstore_timestamp_only",
+                                                     rowCount,
+                                                     batchSizeRows,
+                                                     rowstore);
+    const bool columnstoreOk = runSqlIndexBenchmarkMode(connectionString,
+                                                        DataLoggerCore::SqlServerIndexMode::RowstoreWithNonclusteredColumnstore,
+                                                        "rowstore_with_nonclustered_columnstore",
+                                                        rowCount,
+                                                        batchSizeRows,
+                                                        columnstore);
+    if (!rowstoreOk || !columnstoreOk)
+    {
+        return 1;
+    }
+
+    std::printf("SQL Server index benchmark rows=%llu batch=%llu\n",
+                static_cast<unsigned long long>(rowCount),
+                static_cast<unsigned long long>(batchSizeRows));
+    std::printf("%-42s %12s %12s %12s %14s\n",
+                "mode",
+                "init_ms",
+                "insert_ms",
+                "query_ms",
+                "rows_per_sec");
+    std::printf("%-42s %12.2f %12.2f %12.2f %14.2f\n",
+                rowstore.modeName,
+                rowstore.initializeMs,
+                rowstore.insertAndFlushMs,
+                rowstore.queryMs,
+                rowstore.rowsPerSecond);
+    std::printf("%-42s %12.2f %12.2f %12.2f %14.2f\n",
+                columnstore.modeName,
+                columnstore.initializeMs,
+                columnstore.insertAndFlushMs,
+                columnstore.queryMs,
+                columnstore.rowsPerSecond);
+
+    if (rowstore.insertAndFlushMs > 0.0 && columnstore.insertAndFlushMs > 0.0)
+    {
+        std::printf("insert_ms columnstore / rowstore = %.3f\n",
+                    columnstore.insertAndFlushMs / rowstore.insertAndFlushMs);
+    }
+
+    if (rowstore.queryMs > 0.0 && columnstore.queryMs > 0.0)
+    {
+        std::printf("query_ms columnstore / rowstore = %.3f\n",
+                    columnstore.queryMs / rowstore.queryMs);
+    }
+
+    return 0;
 }
 
 // Create a schema directory under x64 so generated test schemas stay out of source.
@@ -688,6 +947,8 @@ int testDefaults()
     const DataLoggerCore::DataLoggerConfig dataCppConfig;
     failures += expect(dataCppConfig.existingTablePolicy == DataLoggerCore::ExistingTablePolicy::RenameWithTimestampSuffix,
                        "C++ data logger default table policy remains rename");
+    failures += expect(dataCppConfig.sqlServerIndexMode == DataLoggerCore::SqlServerIndexMode::RowstoreTimestampOnly,
+                       "C++ data logger default index mode remains rowstore timestamp only");
     failures += expect(cppConfig.queueCapacity == 512, "C++ default queue capacity");
     failures += expect(cppConfig.maxPayloadBytes == 0, "C++ default max payload bytes");
     failures += expect(cppConfig.overflowPolicy == AsyncLogger::AsyncOverflowPolicy::DropNewest,
@@ -702,6 +963,8 @@ int testDefaults()
     datalogger_config_default_c(&dataCConfig);
     failures += expect(dataCConfig.existingTablePolicy == DATALOGGER_EXISTING_TABLE_POLICY_RENAME_WITH_TIMESTAMP_SUFFIX,
                        "C data logger default table policy remains rename");
+    failures += expect(dataCConfig.sqlServerIndexMode == DATALOGGER_SQL_SERVER_INDEX_MODE_ROWSTORE_TIMESTAMP_ONLY,
+                       "C data logger default index mode remains rowstore timestamp only");
 
     sql_logger_async_config_default_c(&cConfig);
     failures += expect(cConfig.queue_capacity == 512, "C default queue capacity");
@@ -1392,6 +1655,7 @@ int main(int argc, char** argv)
 {
     bool runTests = false;
     bool runPressure = false;
+    bool runColumnstoreBenchmark = false;
     bool runAll = false;
     for (int i = 1; i < argc; ++i)
     {
@@ -1403,6 +1667,10 @@ int main(int argc, char** argv)
         else if (argument == "--pressure")
         {
             runPressure = true;
+        }
+        else if (argument == "--columnstore-benchmark")
+        {
+            runColumnstoreBenchmark = true;
         }
         else if (argument == "--all")
         {
@@ -1420,6 +1688,11 @@ int main(int argc, char** argv)
     if (runPressure)
     {
         return runPressureChecks();
+    }
+
+    if (runColumnstoreBenchmark)
+    {
+        return runSqlIndexBenchmark(argc, argv);
     }
 
     if (runTests)

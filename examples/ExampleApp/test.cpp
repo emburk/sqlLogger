@@ -30,9 +30,11 @@ public:
     // Record that table initialization would have run for a loaded schema registry.
     bool initializeTables(const DataLoggerCore::SchemaRegistry& registry,
                           const std::string& sqlSchemaName,
-                          DataLoggerCore::ExistingTablePolicy policy) override
+                          DataLoggerCore::ExistingTablePolicy policy,
+                          DataLoggerCore::SqlServerIndexMode indexMode) override
     {
         (void)policy;
+        (void)indexMode;
         tablesInitialized_ = connected_ && !registry.tables.empty() && !sqlSchemaName.empty();
         return tablesInitialized_;
     }
@@ -104,9 +106,11 @@ public:
     // Confirm schema loading reached the backend initialization stage.
     bool initializeTables(const DataLoggerCore::SchemaRegistry& registry,
                           const std::string& sqlSchemaName,
-                          DataLoggerCore::ExistingTablePolicy policy) override
+                          DataLoggerCore::ExistingTablePolicy policy,
+                          DataLoggerCore::SqlServerIndexMode indexMode) override
     {
         (void)policy;
+        (void)indexMode;
         initialized_ = connected_ && !registry.tables.empty() && !sqlSchemaName.empty();
         return initialized_;
     }

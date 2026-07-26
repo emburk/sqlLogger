@@ -28,6 +28,7 @@ using DataLoggerCore::DataType;
 using DataLoggerCore::ExistingTablePolicy;
 using DataLoggerCore::OdbcDiagnostic;
 using DataLoggerCore::SchemaRegistry;
+using DataLoggerCore::SqlServerIndexMode;
 using DataLoggerCore::TableSchema;
 
 constexpr SQLLEN kNotNullIndicator = 0;
@@ -435,7 +436,8 @@ public:
     // Prepare SQL tables from the schema registry and add timestamp indexes.
     bool initializeTables(const SchemaRegistry& registry,
                           const std::string& sqlSchemaName,
-                          ExistingTablePolicy policy)
+                          ExistingTablePolicy policy,
+                          SqlServerIndexMode indexMode)
     {
         clearError();
 
@@ -477,7 +479,8 @@ public:
                         return false;
                     }
 
-                    if (!createTimestampIndex(sqlSchemaName, table))
+                    if (!createTimestampIndex(sqlSchemaName, table) ||
+                        !createColumnstoreIndexIfRequested(sqlSchemaName, table, indexMode))
                     {
                         return false;
                     }
@@ -486,7 +489,9 @@ public:
                 }
             }
 
-            if (!createTable(sqlSchemaName, table) || !createTimestampIndex(sqlSchemaName, table))
+            if (!createTable(sqlSchemaName, table) ||
+                !createTimestampIndex(sqlSchemaName, table) ||
+                !createColumnstoreIndexIfRequested(sqlSchemaName, table, indexMode))
             {
                 return false;
             }
@@ -1005,6 +1010,40 @@ private:
         return executeDirect(sql, "creating timestamp index for table '" + table.tableName + "'");
     }
 
+    // Create an optional nonclustered columnstore index for analytical scans.
+    bool createColumnstoreIndexIfRequested(const std::string& sqlSchemaName,
+                                           const TableSchema& table,
+                                           SqlServerIndexMode indexMode)
+    {
+        if (indexMode == SqlServerIndexMode::RowstoreTimestampOnly)
+        {
+            return true;
+        }
+
+        if (indexMode != SqlServerIndexMode::RowstoreWithNonclusteredColumnstore)
+        {
+            setError("Unsupported SQL Server index mode for table '" + table.tableName + "'.");
+            return false;
+        }
+
+        const std::string indexName = "NCCI_" + table.tableName + "_telemetry";
+        std::ostringstream columns;
+        columns << "[timestamp_ms]";
+        for (const auto& column : table.expandedColumns)
+        {
+            columns << ", " << quoteIdentifier(column.sqlName);
+        }
+
+        const std::string sql =
+            "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = " + quoteSqlString(indexName) +
+            " AND object_id = OBJECT_ID(" + quoteSqlString(qualifiedTableName(sqlSchemaName, table.tableName)) + ", N'U'))\n"
+            "BEGIN\n"
+            "    CREATE NONCLUSTERED COLUMNSTORE INDEX " + quoteIdentifier(indexName) + " ON " +
+            qualifiedTableName(sqlSchemaName, table.tableName) + " (" + columns.str() + ");\n"
+            "END;";
+        return executeDirect(sql, "creating columnstore index for table '" + table.tableName + "'");
+    }
+
     // Build one parameterized INSERT statement for a validated table schema.
     std::string buildInsertSql(const std::string& sqlSchemaName, const TableSchema& table) const
     {
@@ -1284,9 +1323,10 @@ bool SqlServerOdbcBackend::connect(const std::string& connectionString)
 // Apply existing-table policy, prepare SQL tables, and create timestamp indexes.
 bool SqlServerOdbcBackend::initializeTables(const SchemaRegistry& registry,
                                             const std::string& sqlSchemaName,
-                                            ExistingTablePolicy policy)
+                                            ExistingTablePolicy policy,
+                                            SqlServerIndexMode indexMode)
 {
-    return impl_->initializeTables(registry, sqlSchemaName, policy);
+    return impl_->initializeTables(registry, sqlSchemaName, policy, indexMode);
 }
 
 // Prepare one reusable parameterized INSERT statement and reusable buffers per table.

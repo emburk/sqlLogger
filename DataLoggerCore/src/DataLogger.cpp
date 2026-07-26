@@ -97,7 +97,10 @@ bool DataLogger::initialize(const DataLoggerConfig& config)
         return false;
     }
 
-    if (!backend_->initializeTables(schemaRegistry_, config.sqlSchemaName, config.existingTablePolicy))
+    if (!backend_->initializeTables(schemaRegistry_,
+                                    config.sqlSchemaName,
+                                    config.existingTablePolicy,
+                                    config.sqlServerIndexMode))
     {
         setBackendError(ErrorCode::BackendTableInitFailed, "Backend table initialization failed");
         resetRuntimeState();

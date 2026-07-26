@@ -20,7 +20,8 @@ public:
     // Apply existing-table policy and prepare SQL tables for the loaded schemas.
     virtual bool initializeTables(const SchemaRegistry& registry,
                                   const std::string& sqlSchemaName,
-                                  ExistingTablePolicy policy) = 0;
+                                  ExistingTablePolicy policy,
+                                  SqlServerIndexMode indexMode) = 0;
 
     // Prepare one reusable insert statement and reusable buffers for each table.
     virtual bool prepareInsertStatements(const SchemaRegistry& registry,

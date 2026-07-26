@@ -17,6 +17,12 @@ typedef enum DataLoggerExistingTablePolicy_c
     DATALOGGER_EXISTING_TABLE_POLICY_CONTINUE_CURRENT_TABLE = 2
 } DataLoggerExistingTablePolicy_c;
 
+typedef enum DataLoggerSqlServerIndexMode_c
+{
+    DATALOGGER_SQL_SERVER_INDEX_MODE_ROWSTORE_TIMESTAMP_ONLY = 0,
+    DATALOGGER_SQL_SERVER_INDEX_MODE_ROWSTORE_WITH_NONCLUSTERED_COLUMNSTORE = 1
+} DataLoggerSqlServerIndexMode_c;
+
 typedef struct DataLoggerConfig_c
 {
     const char* connectionString;
@@ -24,6 +30,7 @@ typedef struct DataLoggerConfig_c
     const char* sqlSchemaName;
     size_t batchSizeRows;
     DataLoggerExistingTablePolicy_c existingTablePolicy;
+    DataLoggerSqlServerIndexMode_c sqlServerIndexMode;
     int printInfoFlag;
     int printErrorFlag;
 } DataLoggerConfig_c;

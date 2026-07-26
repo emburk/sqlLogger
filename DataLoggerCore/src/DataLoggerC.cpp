@@ -59,6 +59,23 @@ bool convertPolicy(DataLoggerExistingTablePolicy_c input,
     return false;
 }
 
+// Translate a C SQL Server index mode enum into the C++ configuration enum.
+bool convertIndexMode(DataLoggerSqlServerIndexMode_c input,
+                      DataLoggerCore::SqlServerIndexMode& output)
+{
+    switch (input)
+    {
+    case DATALOGGER_SQL_SERVER_INDEX_MODE_ROWSTORE_TIMESTAMP_ONLY:
+        output = DataLoggerCore::SqlServerIndexMode::RowstoreTimestampOnly;
+        return true;
+    case DATALOGGER_SQL_SERVER_INDEX_MODE_ROWSTORE_WITH_NONCLUSTERED_COLUMNSTORE:
+        output = DataLoggerCore::SqlServerIndexMode::RowstoreWithNonclusteredColumnstore;
+        return true;
+    }
+
+    return false;
+}
+
 // Translate the C configuration struct into the existing C++ configuration type.
 bool convertConfig(const DataLoggerConfig_c* input,
                    DataLoggerCore::DataLoggerConfig& output,
@@ -73,6 +90,12 @@ bool convertConfig(const DataLoggerConfig_c* input,
     if (!convertPolicy(input->existingTablePolicy, output.existingTablePolicy))
     {
         error = "DataLoggerConfig_c contains an unknown existing-table policy.";
+        return false;
+    }
+
+    if (!convertIndexMode(input->sqlServerIndexMode, output.sqlServerIndexMode))
+    {
+        error = "DataLoggerConfig_c contains an unknown SQL Server index mode.";
         return false;
     }
 
@@ -129,6 +152,7 @@ void datalogger_config_default_c(DataLoggerConfig_c* config)
     config->sqlSchemaName = "dbo";
     config->batchSizeRows = 100;
     config->existingTablePolicy = DATALOGGER_EXISTING_TABLE_POLICY_RENAME_WITH_TIMESTAMP_SUFFIX;
+    config->sqlServerIndexMode = DATALOGGER_SQL_SERVER_INDEX_MODE_ROWSTORE_TIMESTAMP_ONLY;
     config->printInfoFlag = 1;
     config->printErrorFlag = 1;
 }

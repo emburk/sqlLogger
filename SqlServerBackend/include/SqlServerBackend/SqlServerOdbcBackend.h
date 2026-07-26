@@ -24,7 +24,8 @@ public:
     // Apply existing-table policy, prepare SQL tables, and create timestamp indexes.
     bool initializeTables(const DataLoggerCore::SchemaRegistry& registry,
                           const std::string& sqlSchemaName,
-                          DataLoggerCore::ExistingTablePolicy policy) override;
+                          DataLoggerCore::ExistingTablePolicy policy,
+                          DataLoggerCore::SqlServerIndexMode indexMode) override;
 
     // Prepare one reusable parameterized INSERT statement and buffers per table.
     bool prepareInsertStatements(const DataLoggerCore::SchemaRegistry& registry,

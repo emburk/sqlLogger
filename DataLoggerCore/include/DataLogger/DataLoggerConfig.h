@@ -12,6 +12,12 @@ enum class ExistingTablePolicy
     ContinueCurrentTable
 };
 
+enum class SqlServerIndexMode
+{
+    RowstoreTimestampOnly,
+    RowstoreWithNonclusteredColumnstore
+};
+
 struct DataLoggerConfig
 {
     std::string connectionString;
@@ -21,6 +27,7 @@ struct DataLoggerConfig
     std::size_t batchSizeRows = 100;
 
     ExistingTablePolicy existingTablePolicy = ExistingTablePolicy::RenameWithTimestampSuffix;
+    SqlServerIndexMode sqlServerIndexMode = SqlServerIndexMode::RowstoreTimestampOnly;
 
     // Print line-oriented initialization details after DB setup completes.
     bool printInfoFlag = true;
